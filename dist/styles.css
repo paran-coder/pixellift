@@ -307,3 +307,19 @@ footer div a { color: white; text-decoration: underline; text-underline-offset: 
 @media (max-width: 640px) { .empty-preview { padding: 12px; gap: 7px; } .demo-compare { max-width: 340px; } }
 
 @media (max-width: 390px) { .preview-stage { height: 335px; } .empty-preview > strong { font-size: 13px; } .preview-footer { flex-wrap: wrap; } }
+
+/* PixelLift 1.2.1 — zoomed comparison, with a single synchronized viewport. */
+.preview-tools { display: inline-flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; }
+.zoom-compare-btn { appearance: none; display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 7px 14px; border: 1px solid #cfaed6; border-radius: 90px; color: var(--primary); background: #fff; white-space: nowrap; font: inherit; font-weight: 750; font-size: 12px; cursor: pointer; }
+.zoom-compare-btn svg { width: 16px; height: 16px; }
+.zoom-compare-btn:hover { background: #f9f0ff; }
+.zoom-compare-btn[aria-pressed="true"] { background: var(--primary); color: #fff; border-color: var(--primary); }
+.zoom-compare-btn:focus-visible { outline: 3px solid #3789ce; outline-offset: 2px; }
+.compare img { transform: translate(var(--pan-x, 0px), var(--pan-y, 0px)) scale(var(--zoom, 1)); transform-origin: 50% 50%; }
+.compare.zoomed { cursor: grab; touch-action: none; }
+.compare.zoomed.is-panning { cursor: grabbing; }
+.compare.zoomed input[type=range] { pointer-events: none; }
+.compare.zoomed .compare-knob { pointer-events: auto; cursor: ew-resize; touch-action: none; }
+.compare:has(input[type=range]:focus-visible) .compare-knob { outline: 3px solid #2b79c2; outline-offset: 3px; }
+@media (max-width: 640px) { .preview-footer { align-items: flex-start; flex-wrap: wrap; } .preview-tools { width: 100%; justify-content: space-between; } .zoom-compare-btn { min-height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .zoom-compare-btn { transition: none; } }

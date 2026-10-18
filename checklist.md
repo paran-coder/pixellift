@@ -1,3 +1,15 @@
+# PixelLift v1.2.1 — 구현 완료 체크리스트
+
+- [x] 결과가 없으면 확대 비교 UI 미노출
+- [x] 원본/결과 동기 확대·이동 및 1× 복귀
+- [x] 확대 상태의 비교 슬라이더 마우스·터치·키보드 조작
+- [x] 이미지 변경/재실행 시 상태 정리
+- [x] 320~1440px 반응형 6종 테스트, 확대 통합 390·1440px 테스트
+- [x] Bicubic 대비 품질 개선과 형태 훼손 제한 출시 기준 문서화
+- [x] 코드 단위 테스트/정적 빌드
+- [ ] 실제 Real-ESRGAN 대형 모델에서 확대 화면에 보이는 디테일 및 베타 합격 기준 검증
+- [ ] 공개 GitHub/Vercel 배포
+
 # PixelLift v1.2.0 checklist
 
 - [x] 변경 전 context-notes.md / checklist.md / README.md / User manual.md 생성

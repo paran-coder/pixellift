@@ -354,7 +354,7 @@ const $ = id => document.getElementById(id);
 const ui = Object.fromEntries([
   'file-input','dropzone','choose-btn','change-image-btn','drop-overlay','drop-main','drop-description','file-pill','file-name','file-meta','remove-file',
   'output-summary','dimensions-value','quality-help','start-btn','cancel-btn','gpu-notice','preview-size','empty-preview',
-  'compare','before-img','after-img','after-layer','compare-divider','compare-range','preview-caption','result-format',
+  'compare','before-img','after-img','after-layer','compare-divider','compare-range','preview-caption','result-format','zoom-compare-btn','zoom-compare-label',
   'progress-wrap','progress-label','progress-percent','progress-bar','progress-detail','result-actions','result-meta','download-btn','alert',
 ].map(id => [id.replaceAll('-', '_'), $(id)]));
 
@@ -362,6 +362,51 @@ const state = { file: null, bitmap: null, originalUrl: null, resultUrl: null, qu
 const ONNX_CDN = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
 let runtimePromise;
 let pendingFileSelection = 0;
+// Synchronized pan + zoom for Before/After; never alter source image bytes.
+const zoomView = { level: 1, x: 0, y: 0, panPointer: null, handlePointer: null };
+
+function panBounds() {
+  if (!state.bitmap) return { x: 0, y: 0 };
+  const { width, height } = ui.compare.getBoundingClientRect();
+  if (!width || !height) return { x: 0, y: 0 };
+  const fit = Math.min(width / state.bitmap.width, height / state.bitmap.height);
+  return {
+    x: Math.max(0, (state.bitmap.width * fit * zoomView.level - width) / 2),
+    y: Math.max(0, (state.bitmap.height * fit * zoomView.level - height) / 2),
+  };
+}
+function updateZoomView() {
+  const b = panBounds();
+  zoomView.x = Math.min(b.x, Math.max(-b.x, zoomView.x));
+  zoomView.y = Math.min(b.y, Math.max(-b.y, zoomView.y));
+  ui.compare.style.setProperty('--zoom', String(zoomView.level));
+  ui.compare.style.setProperty('--pan-x', `${zoomView.x}px`);
+  ui.compare.style.setProperty('--pan-y', `${zoomView.y}px`);
+}
+function setCompareZoom(level) {
+  zoomView.level = level === 4 && !!state.resultUrl ? 4 : 1;
+  zoomView.x = 0;
+  zoomView.y = 0;
+  zoomView.panPointer = null;
+  zoomView.handlePointer = null;
+  ui.compare.classList.remove('is-panning');
+  ui.compare.classList.toggle('zoomed', zoomView.level > 1);
+  ui.zoom_compare_btn.setAttribute('aria-pressed', String(zoomView.level > 1));
+  ui.zoom_compare_label.textContent = zoomView.level > 1 ? '전체 보기' : '확대 비교 · 4×';
+  if (state.resultUrl) ui.preview_caption.textContent = zoomView.level > 1
+    ? '이미지를 드래그해 이동 · 중앙 손잡이로 전후 비교 · 전체 보기로 돌아갈 수 있습니다'
+    : '슬라이더를 이동해 비교하세요 · 확대 비교로 디테일 확인';
+  updateZoomView();
+}
+function positionSlider(clientX) {
+  const r = ui.compare.getBoundingClientRect();
+  if (!r.width) return;
+  const next = Math.min(100, Math.max(0, ((clientX - r.left) / r.width) * 100));
+  ui.compare_range.value = String(next);
+  setSlider(next);
+}
+
+
 
 function updateOptions() {
   // Selected styles use CSS :has(> input:checked), not a stale JS-managed class.
@@ -383,6 +428,8 @@ function updateOptions() {
 
 function revokeUrl(url) { if (url) URL.revokeObjectURL(url); }
 function releaseImage() {
+  setCompareZoom(1);
+  ui.zoom_compare_btn.classList.add('hidden');
   pendingFileSelection++;
   state.abort?.abort();
   state.bitmap?.close?.();
@@ -413,6 +460,8 @@ function releaseImage() {
 }
 
 function invalidateResult() {
+  setCompareZoom(1);
+  ui.zoom_compare_btn.classList.add('hidden');
   revokeUrl(state.resultUrl);
   state.resultUrl = null;
   ui.result_actions.classList.add('hidden');
@@ -591,6 +640,8 @@ async function start() {
     ui.compare.classList.remove('comparison-idle');
     ui.dropzone.classList.add('has-result');
     ui.compare_range.disabled = false;
+    ui.zoom_compare_btn.classList.remove('hidden');
+    setCompareZoom(1);
     ui.result_actions.classList.remove('hidden');
     ui.result_format.textContent = `${state.factor}× / ${QUALITY_PRESETS[state.quality].label} / PNG`;
     ui.preview_caption.textContent = '슬라이더를 이동해 원본과 AI 결과를 비교하세요';
@@ -695,6 +746,56 @@ document.querySelectorAll('input[name="quality"]').forEach(el => el.addEventList
 }));
 document.querySelectorAll('input[name="scale"]').forEach(el => el.addEventListener('change', e => { state.factor = Number(e.target.value); ui.alert.classList.add('hidden'); invalidateResult(); updateOptions(); }));
 ui.compare_range.addEventListener('input', event => setSlider(event.target.value));
+// Zoom is opt-in: full-frame view is retained until the user requests detail.
+ui.zoom_compare_btn.addEventListener('click', () => setCompareZoom(zoomView.level === 1 ? 4 : 1));
+window.addEventListener('resize', () => { if (zoomView.level > 1) updateZoomView(); });
+
+// When zoomed, the image canvas captures drag to pan. Both images share one transform.
+ui.compare.addEventListener('pointerdown', event => {
+  if (!state.resultUrl || zoomView.level <= 1 || event.button !== 0 || event.target.closest('.compare-knob')) return;
+  zoomView.panPointer = { id: event.pointerId, x: event.clientX, y: event.clientY, fromX: zoomView.x, fromY: zoomView.y };
+  ui.compare.setPointerCapture(event.pointerId);
+  ui.compare.classList.add('is-panning');
+  event.preventDefault();
+});
+ui.compare.addEventListener('pointermove', event => {
+  const p = zoomView.panPointer;
+  if (!p || p.id !== event.pointerId) return;
+  zoomView.x = p.fromX + event.clientX - p.x;
+  zoomView.y = p.fromY + event.clientY - p.y;
+  updateZoomView();
+});
+function finishPan(event) {
+  if (zoomView.panPointer?.id !== event.pointerId) return;
+  zoomView.panPointer = null;
+  ui.compare.classList.remove('is-panning');
+  if (ui.compare.hasPointerCapture(event.pointerId)) ui.compare.releasePointerCapture(event.pointerId);
+}
+ui.compare.addEventListener('pointerup', finishPan);
+ui.compare.addEventListener('pointercancel', finishPan);
+// The existing full-width transparent range captures pointer gestures in full view.
+// In zoom mode it yields pointer events to the image canvas; the 44px divider knob
+// becomes the pointer drag target. The range remains keyboard focusable.
+const knob = ui.compare_divider.querySelector('.compare-knob');
+knob.addEventListener('pointerdown', event => {
+  if (zoomView.level <= 1 || !state.resultUrl || event.button !== 0) return;
+  event.stopPropagation();
+  event.preventDefault();
+  zoomView.handlePointer = event.pointerId;
+  knob.setPointerCapture(event.pointerId);
+  positionSlider(event.clientX);
+});
+knob.addEventListener('pointermove', event => {
+  if (zoomView.handlePointer === event.pointerId) positionSlider(event.clientX);
+});
+function finishHandle(event) {
+  if (zoomView.handlePointer !== event.pointerId) return;
+  zoomView.handlePointer = null;
+  if (knob.hasPointerCapture(event.pointerId)) knob.releasePointerCapture(event.pointerId);
+}
+knob.addEventListener('pointerup', finishHandle);
+knob.addEventListener('pointercancel', finishHandle);
+
 ui.start_btn.addEventListener('click', start);
 ui.cancel_btn.addEventListener('click', () => { state.abort?.abort(); ui.cancel_btn.textContent = '작업 취소 중…'; });
 ui.download_btn.addEventListener('click', download);
