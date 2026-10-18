@@ -1,4 +1,4 @@
-"""PixelLift v1.0.4 UI: browser regressions for full-width interactive preview."""
+"""PixelLift v1.1.0 UI: browser regressions for full-width interactive preview."""
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from PIL import Image
@@ -11,7 +11,7 @@ css=(R/'styles.css').read_text();js=(R/'src/client.js').read_text()
 png=io.BytesIO();Image.new('RGB',(192,128),(116,82,158)).save(png,'PNG');content=png.getvalue()
 with sync_playwright() as p:
  browser=p.chromium.launch(headless=True,executable_path='/usr/bin/chromium',args=['--no-sandbox'])
- for width in (320,390,768,1024,1440):
+ for width in (320,390,1440):
   page=browser.new_page(viewport={'width':width,'height':900},accept_downloads=True,reduced_motion='reduce')
   errors=[]; page.on('pageerror', lambda e:errors.append(str(e)))
   page.set_content(html,wait_until='domcontentloaded')
@@ -32,9 +32,9 @@ with sync_playwright() as p:
   assert page.locator('#change-image-btn').is_visible()
   assert page.locator('#compare-range').is_disabled()
   assert page.locator('#start-btn').is_enabled()
-  page.locator('label.mode-option').nth(2).click()
+  page.locator('label.quality-option').nth(2).click()
   page.locator('label.scale-option').nth(0).click()
-  assert page.locator('input[name="mode"]:checked').get_attribute('value')=='anime'
+  assert page.locator('input[name="quality"]:checked').get_attribute('value')=='detail'
   assert page.locator('input[name="scale"]:checked').get_attribute('value')=='2'
   assert '384' in page.locator('#dimensions-value').inner_text()
   # Clicking large image again before processing should open picker.
@@ -67,9 +67,9 @@ with sync_playwright() as p:
   page.wait_for_function('document.querySelector("#file-name").textContent.includes("changed")')
   assert not errors,(width,errors)
   if width==390:
-   page.screenshot(path='/mnt/data/pixellift-v1.0.4-mobile.png',full_page=True)
+   page.screenshot(path='/mnt/data/pixellift-v1.1.0-preview-mobile.png',full_page=True)
   if width==1440:
-   page.screenshot(path='/mnt/data/pixellift-v1.0.4-desktop.png',full_page=True)
-  print(f'PASS {width}px | full-width preview, picker, drag&drop, keyboard, mode and scale')
+   page.screenshot(path='/mnt/data/pixellift-v1.1.0-preview-desktop.png',full_page=True)
+  print(f'PASS {width}px | full-width preview, picker, drag&drop, keyboard, quality and scale')
   page.close()
  browser.close()

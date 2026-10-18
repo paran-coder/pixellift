@@ -1,6 +1,7 @@
 /** PixelLift v1.0.1 — Real-ESRGAN browser inference core. */
+/** One universal Real-ESRGAN model; quality presets adjust its contribution, not the model identity. */
 export const MODEL_CONFIG = Object.freeze({
-  photo: {
+  universal: {
     name: 'RealESRGAN_x4plus',
     url: 'https://huggingface.co/skillsafe-ai/realesrgan-x4plus/resolve/main/model.onnx',
     source: 'https://huggingface.co/skillsafe-ai/realesrgan-x4plus',
@@ -9,25 +10,53 @@ export const MODEL_CONFIG = Object.freeze({
     tile: 112,
     pad: 24,
   },
-  illustration: {
-    name: 'RealESRGAN_x4plus_anime_6B',
-    url: 'https://huggingface.co/skillsafe-ai/realesrgan-x4plus-anime-6b/resolve/main/model.onnx',
-    source: 'https://huggingface.co/skillsafe-ai/realesrgan-x4plus-anime-6b',
-    approxMB: 18,
-    sha256: '9a029dae374b2cd4c3eb2dbbed857e22e6d785687c767aa12828e7356b9fb378',
-    tile: 144,
-    pad: 24,
-  },
-  anime: {
-    name: 'realesr-animevideov3',
-    url: 'https://huggingface.co/skillsafe-ai/realesr-animevideov3/resolve/main/model.onnx',
-    source: 'https://huggingface.co/skillsafe-ai/realesr-animevideov3',
-    approxMB: 2.5,
-    sha256: '78baa685a1a92cac6e14ab2af2a8ad0ef56fa48629563b1414e3a7acc54d86e2',
-    tile: 192,
-    pad: 16,
-  },
 });
+
+/** Preservation-first hybrid: the source-resampled image anchors low frequencies.
+ *  The higher presets deliberately mix more of the AI prediction and may alter textures.
+ *  These coefficients are starting points, not validated perceptual guarantees.
+ */
+export const QUALITY_PRESETS = Object.freeze({
+  preserve: Object.freeze({ modelMix: 0, detailGain: .60, detailLimit: 14, label: '원본 보존' }),
+  balanced: Object.freeze({ modelMix: .24, detailGain: .72, detailLimit: 25, label: '균형' }),
+  detail: Object.freeze({ modelMix: .64, detailGain: .38, detailLimit: 38, label: '선명도 강화' }),
+});
+
+export function qualityConfig(quality) {
+  const config = QUALITY_PRESETS[quality];
+  if (!config) throw new Error('업스케일 품질 옵션이 올바르지 않습니다.');
+  return config;
+}
+
+/** Output RGBA; alpha is copied from the source-resampled base, not invented by AI. */
+export function mixPreservedPixels(base, prediction, width, height, quality) {
+  const { modelMix, detailGain, detailLimit } = qualityConfig(quality);
+  const size = width * height * 4;
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || base.length !== size || prediction.length !== size) {
+    throw new Error('업스케일 결과의 픽셀 크기가 일치하지 않습니다.');
+  }
+  const result = new Uint8ClampedArray(size);
+  const row = width * 4;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const left = x ? i - 4 : i;
+      const right = x + 1 < width ? i + 4 : i;
+      const top = y ? i - row : i;
+      const bottom = y + 1 < height ? i + row : i;
+      for (let c = 0; c < 3; c++) {
+        const ai = prediction[i + c];
+        // Cross-neighborhood high-pass. Missing low frequencies are never copied
+        // wholesale in Preserve mode, preventing large-scale hallucination.
+        const low = (ai * 4 + prediction[left + c] + prediction[right + c] + prediction[top + c] + prediction[bottom + c]) / 8;
+        const detail = Math.max(-detailLimit, Math.min(detailLimit, (ai - low) * detailGain));
+        result[i + c] = base[i + c] + modelMix * (ai - base[i + c]) + detail;
+      }
+      result[i + 3] = base[i + 3];
+    }
+  }
+  return result;
+}
 
 export const MAX_FILE_BYTES = 20 * 1024 * 1024;
 export const MAX_OUTPUT_PIXELS = 36_000_000;
@@ -97,11 +126,11 @@ export function errorMessage(error) {
 
 const disposed = tensor => { try { tensor?.dispose?.(); } catch {} };
 
-export async function upscaleImage({ bitmap, factor, mode, ort, session, signal, onTile }) {
+export async function upscaleImage({ bitmap, factor, quality = 'preserve', ort, session, signal, onTile }) {
   const { width, height } = bitmap;
   const plan = validatePlan(width, height, factor);
-  const conf = MODEL_CONFIG[mode];
-  if (!conf) throw new Error('이미지 유형을 선택해 주세요.');
+  qualityConfig(quality);
+  const conf = MODEL_CONFIG.universal;
   const source = document.createElement('canvas');
   source.width = width;
   source.height = height;
@@ -130,27 +159,34 @@ export async function upscaleImage({ bitmap, factor, mode, ort, session, signal,
       // These converters expose NCHW output with 4x height and width.
       if (!output || output.dims[2] !== t.sh * 4 || output.dims[3] !== t.sw * 4) throw new Error('모델 출력의 배율이 4배가 아닙니다.');
       const raw = output.data ?? (await output.getData());
-      const img = chwToImageData(raw, t.sw * 4, t.sh * 4);
+      const outW = t.sw * 4;
+      const outH = t.sh * 4;
+      const predicted = chwToImageData(raw, outW, outH);
+      // Draw base image from the original (not from AI) at the same tile resolution.
+      // This is the anchor for preserving geometry and color in Preserve mode.
+      const baseCanvas = document.createElement('canvas');
+      baseCanvas.width = outW;
+      baseCanvas.height = outH;
+      const baseCtx = baseCanvas.getContext('2d', { willReadFrequently: true });
+      baseCtx.imageSmoothingEnabled = true;
+      baseCtx.imageSmoothingQuality = 'high';
+      baseCtx.drawImage(source, t.sx, t.sy, t.sw, t.sh, 0, 0, outW, outH);
+      const baseline = baseCtx.getImageData(0, 0, outW, outH);
+      const composed = mixPreservedPixels(baseline.data, predicted.data, outW, outH, quality);
       const temp = document.createElement('canvas');
-      temp.width = t.sw * 4;
-      temp.height = t.sh * 4;
-      temp.getContext('2d').putImageData(img, 0, 0);
-      destCtx.drawImage(
-        temp,
-        (t.left - t.sx) * 4, (t.top - t.sy) * 4, t.width * 4, t.height * 4,
-        t.left * factor, t.top * factor, t.width * factor, t.height * factor,
-      );
-      // Preserve original transparency (the model itself only predicts RGB).
-      if (mode !== 'photo' || pixels.data.some((v, k) => k % 4 === 3 && v !== 255)) {
-        destCtx.save();
-        destCtx.beginPath();
-        destCtx.rect(t.left * factor, t.top * factor, t.width * factor, t.height * factor);
-        destCtx.clip();
-        destCtx.globalCompositeOperation = 'destination-in';
-        destCtx.drawImage(source, t.left, t.top, t.width, t.height, t.left * factor, t.top * factor, t.width * factor, t.height * factor);
-        destCtx.restore();
+      temp.width = outW;
+      temp.height = outH;
+      try {
+        temp.getContext('2d').putImageData(new ImageData(composed, outW, outH), 0, 0);
+        destCtx.drawImage(
+          temp,
+          (t.left - t.sx) * 4, (t.top - t.sy) * 4, t.width * 4, t.height * 4,
+          t.left * factor, t.top * factor, t.width * factor, t.height * factor,
+        );
+      } finally {
+        temp.width = temp.height = 0;
+        baseCanvas.width = baseCanvas.height = 0;
       }
-      temp.width = temp.height = 0;
     } finally {
       disposed(input);
       if (result) Object.values(result).forEach(disposed);

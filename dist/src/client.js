@@ -1,8 +1,9 @@
 /* PixelLift browser bundle — generated. Do not edit. */
 (() => {
 /** PixelLift v1.0.1 — Real-ESRGAN browser inference core. */
+/** One universal Real-ESRGAN model; quality presets adjust its contribution, not the model identity. */
 const MODEL_CONFIG = Object.freeze({
-  photo: {
+  universal: {
     name: 'RealESRGAN_x4plus',
     url: 'https://huggingface.co/skillsafe-ai/realesrgan-x4plus/resolve/main/model.onnx',
     source: 'https://huggingface.co/skillsafe-ai/realesrgan-x4plus',
@@ -11,25 +12,53 @@ const MODEL_CONFIG = Object.freeze({
     tile: 112,
     pad: 24,
   },
-  illustration: {
-    name: 'RealESRGAN_x4plus_anime_6B',
-    url: 'https://huggingface.co/skillsafe-ai/realesrgan-x4plus-anime-6b/resolve/main/model.onnx',
-    source: 'https://huggingface.co/skillsafe-ai/realesrgan-x4plus-anime-6b',
-    approxMB: 18,
-    sha256: '9a029dae374b2cd4c3eb2dbbed857e22e6d785687c767aa12828e7356b9fb378',
-    tile: 144,
-    pad: 24,
-  },
-  anime: {
-    name: 'realesr-animevideov3',
-    url: 'https://huggingface.co/skillsafe-ai/realesr-animevideov3/resolve/main/model.onnx',
-    source: 'https://huggingface.co/skillsafe-ai/realesr-animevideov3',
-    approxMB: 2.5,
-    sha256: '78baa685a1a92cac6e14ab2af2a8ad0ef56fa48629563b1414e3a7acc54d86e2',
-    tile: 192,
-    pad: 16,
-  },
 });
+
+/** Preservation-first hybrid: the source-resampled image anchors low frequencies.
+ *  The higher presets deliberately mix more of the AI prediction and may alter textures.
+ *  These coefficients are starting points, not validated perceptual guarantees.
+ */
+const QUALITY_PRESETS = Object.freeze({
+  preserve: Object.freeze({ modelMix: 0, detailGain: .60, detailLimit: 14, label: '원본 보존' }),
+  balanced: Object.freeze({ modelMix: .24, detailGain: .72, detailLimit: 25, label: '균형' }),
+  detail: Object.freeze({ modelMix: .64, detailGain: .38, detailLimit: 38, label: '선명도 강화' }),
+});
+
+function qualityConfig(quality) {
+  const config = QUALITY_PRESETS[quality];
+  if (!config) throw new Error('업스케일 품질 옵션이 올바르지 않습니다.');
+  return config;
+}
+
+/** Output RGBA; alpha is copied from the source-resampled base, not invented by AI. */
+function mixPreservedPixels(base, prediction, width, height, quality) {
+  const { modelMix, detailGain, detailLimit } = qualityConfig(quality);
+  const size = width * height * 4;
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || base.length !== size || prediction.length !== size) {
+    throw new Error('업스케일 결과의 픽셀 크기가 일치하지 않습니다.');
+  }
+  const result = new Uint8ClampedArray(size);
+  const row = width * 4;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const left = x ? i - 4 : i;
+      const right = x + 1 < width ? i + 4 : i;
+      const top = y ? i - row : i;
+      const bottom = y + 1 < height ? i + row : i;
+      for (let c = 0; c < 3; c++) {
+        const ai = prediction[i + c];
+        // Cross-neighborhood high-pass. Missing low frequencies are never copied
+        // wholesale in Preserve mode, preventing large-scale hallucination.
+        const low = (ai * 4 + prediction[left + c] + prediction[right + c] + prediction[top + c] + prediction[bottom + c]) / 8;
+        const detail = Math.max(-detailLimit, Math.min(detailLimit, (ai - low) * detailGain));
+        result[i + c] = base[i + c] + modelMix * (ai - base[i + c]) + detail;
+      }
+      result[i + 3] = base[i + 3];
+    }
+  }
+  return result;
+}
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 const MAX_OUTPUT_PIXELS = 36_000_000;
@@ -99,11 +128,11 @@ function errorMessage(error) {
 
 const disposed = tensor => { try { tensor?.dispose?.(); } catch {} };
 
-async function upscaleImage({ bitmap, factor, mode, ort, session, signal, onTile }) {
+async function upscaleImage({ bitmap, factor, quality = 'preserve', ort, session, signal, onTile }) {
   const { width, height } = bitmap;
   const plan = validatePlan(width, height, factor);
-  const conf = MODEL_CONFIG[mode];
-  if (!conf) throw new Error('이미지 유형을 선택해 주세요.');
+  qualityConfig(quality);
+  const conf = MODEL_CONFIG.universal;
   const source = document.createElement('canvas');
   source.width = width;
   source.height = height;
@@ -132,27 +161,34 @@ async function upscaleImage({ bitmap, factor, mode, ort, session, signal, onTile
       // These converters expose NCHW output with 4x height and width.
       if (!output || output.dims[2] !== t.sh * 4 || output.dims[3] !== t.sw * 4) throw new Error('모델 출력의 배율이 4배가 아닙니다.');
       const raw = output.data ?? (await output.getData());
-      const img = chwToImageData(raw, t.sw * 4, t.sh * 4);
+      const outW = t.sw * 4;
+      const outH = t.sh * 4;
+      const predicted = chwToImageData(raw, outW, outH);
+      // Draw base image from the original (not from AI) at the same tile resolution.
+      // This is the anchor for preserving geometry and color in Preserve mode.
+      const baseCanvas = document.createElement('canvas');
+      baseCanvas.width = outW;
+      baseCanvas.height = outH;
+      const baseCtx = baseCanvas.getContext('2d', { willReadFrequently: true });
+      baseCtx.imageSmoothingEnabled = true;
+      baseCtx.imageSmoothingQuality = 'high';
+      baseCtx.drawImage(source, t.sx, t.sy, t.sw, t.sh, 0, 0, outW, outH);
+      const baseline = baseCtx.getImageData(0, 0, outW, outH);
+      const composed = mixPreservedPixels(baseline.data, predicted.data, outW, outH, quality);
       const temp = document.createElement('canvas');
-      temp.width = t.sw * 4;
-      temp.height = t.sh * 4;
-      temp.getContext('2d').putImageData(img, 0, 0);
-      destCtx.drawImage(
-        temp,
-        (t.left - t.sx) * 4, (t.top - t.sy) * 4, t.width * 4, t.height * 4,
-        t.left * factor, t.top * factor, t.width * factor, t.height * factor,
-      );
-      // Preserve original transparency (the model itself only predicts RGB).
-      if (mode !== 'photo' || pixels.data.some((v, k) => k % 4 === 3 && v !== 255)) {
-        destCtx.save();
-        destCtx.beginPath();
-        destCtx.rect(t.left * factor, t.top * factor, t.width * factor, t.height * factor);
-        destCtx.clip();
-        destCtx.globalCompositeOperation = 'destination-in';
-        destCtx.drawImage(source, t.left, t.top, t.width, t.height, t.left * factor, t.top * factor, t.width * factor, t.height * factor);
-        destCtx.restore();
+      temp.width = outW;
+      temp.height = outH;
+      try {
+        temp.getContext('2d').putImageData(new ImageData(composed, outW, outH), 0, 0);
+        destCtx.drawImage(
+          temp,
+          (t.left - t.sx) * 4, (t.top - t.sy) * 4, t.width * 4, t.height * 4,
+          t.left * factor, t.top * factor, t.width * factor, t.height * factor,
+        );
+      } finally {
+        temp.width = temp.height = 0;
+        baseCanvas.width = baseCanvas.height = 0;
       }
-      temp.width = temp.height = 0;
     } finally {
       disposed(input);
       if (result) Object.values(result).forEach(disposed);
@@ -211,12 +247,12 @@ async function verifyModelSha256(bytes, expectedSha256) {
 const $ = id => document.getElementById(id);
 const ui = Object.fromEntries([
   'file-input','dropzone','choose-btn','change-image-btn','drop-overlay','drop-main','drop-description','file-pill','file-name','file-meta','remove-file',
-  'output-summary','dimensions-value','start-btn','cancel-btn','gpu-notice','preview-size','empty-preview',
+  'output-summary','dimensions-value','quality-help','start-btn','cancel-btn','gpu-notice','preview-size','empty-preview',
   'compare','before-img','after-img','after-layer','compare-divider','compare-range','preview-caption','result-format',
   'progress-wrap','progress-label','progress-percent','progress-bar','progress-detail','result-actions','result-meta','download-btn','alert',
 ].map(id => [id.replaceAll('-', '_'), $(id)]));
 
-const state = { file: null, bitmap: null, originalUrl: null, resultUrl: null, mode: 'photo', factor: 4, running: false, abort: null, supportsGpu: false, session: null, sessionMode: null, provider: null };
+const state = { file: null, bitmap: null, originalUrl: null, resultUrl: null, quality: 'preserve', factor: 4, running: false, abort: null, supportsGpu: false, session: null, sessionModel: null, provider: null };
 const ONNX_CDN = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
 let runtimePromise;
 let pendingFileSelection = 0;
@@ -364,8 +400,9 @@ async function getOrt() {
   return runtimePromise;
 }
 
-async function openSession(mode, signal, progress) {
-  if (state.session && state.sessionMode === mode) {
+async function openSession(signal, progress) {
+  const mode = 'universal';
+  if (state.session && state.sessionModel === mode) {
     progress(30, `${MODEL_CONFIG[mode].name} 모델 재사용`);
     return { ort: await getOrt(), session: state.session };
   }
@@ -385,7 +422,7 @@ async function openSession(mode, signal, progress) {
   // Do not keep two large models in GPU memory during a mode change.
   try { await state.session?.release?.(); } catch {}
   state.session = null;
-  state.sessionMode = null;
+  state.sessionModel = null;
   let session = null;
   let provider = 'WebGPU';
   if (state.supportsGpu) {
@@ -398,7 +435,7 @@ async function openSession(mode, signal, progress) {
   }
   if (signal.aborted) { await session.release(); throw new DOMException('취소된 작업', 'AbortError'); }
   state.session = session;
-  state.sessionMode = mode;
+  state.sessionModel = mode;
   state.provider = provider;
   progress(29, `모델 준비 완료 · ${provider}`);
   return { ort, session };
@@ -422,13 +459,13 @@ async function start() {
   ui.change_image_btn.disabled = true;
   invalidateResult();
   ui.file_input.disabled = true;
-  document.querySelectorAll('input[name="mode"],input[name="scale"]').forEach(el => el.disabled = true);
+  document.querySelectorAll('input[name="quality"],input[name="scale"]').forEach(el => el.disabled = true);
   const started = performance.now();
   try {
-    const { ort, session } = await openSession(state.mode, abort.signal, (n, label, detail) => setProgress(n, label, detail));
+    const { ort, session } = await openSession(abort.signal, (n, label, detail) => setProgress(n, label, detail));
     if (abort.signal.aborted) throw new DOMException('취소된 작업', 'AbortError');
-    const result = await upscaleImage({ bitmap: state.bitmap, factor: state.factor, mode: state.mode, ort, session, signal: abort.signal,
-      onTile: (done, total) => setProgress(30 + (done / total) * 65, 'AI 디테일 복원 중', `${done}/${total} 타일 처리 · ${state.provider}`),
+    const result = await upscaleImage({ bitmap: state.bitmap, factor: state.factor, quality: state.quality, ort, session, signal: abort.signal,
+      onTile: (done, total) => setProgress(30 + (done / total) * 65, '원본 기반 AI 업스케일 처리 중', `${done}/${total} 타일 처리 · ${state.provider}`),
     });
     if (abort.signal.aborted) throw new DOMException('취소된 작업', 'AbortError');
     setProgress(97, 'PNG 파일을 생성하는 중');
@@ -447,7 +484,7 @@ async function start() {
     ui.dropzone.classList.add('has-result');
     ui.compare_range.disabled = false;
     ui.result_actions.classList.remove('hidden');
-    ui.result_format.textContent = `${state.factor}× / PNG`;
+    ui.result_format.textContent = `${state.factor}× / ${QUALITY_PRESETS[state.quality].label} / PNG`;
     ui.preview_caption.textContent = '슬라이더를 이동해 원본과 AI 결과를 비교하세요';
     ui.result_meta.textContent = `${(state.bitmap.width * state.factor).toLocaleString()} × ${(state.bitmap.height * state.factor).toLocaleString()} · ${((performance.now() - started) / 1000).toFixed(1)}초 · ${state.provider}`;
     setProgress(100, '업스케일 완료');
@@ -468,7 +505,7 @@ async function start() {
     ui.file_input.disabled = false;
     ui.remove_file.disabled = false;
     ui.change_image_btn.disabled = false;
-    document.querySelectorAll('input[name="mode"],input[name="scale"]').forEach(el => el.disabled = false);
+    document.querySelectorAll('input[name="quality"],input[name="scale"]').forEach(el => el.disabled = false);
     updateOptions();
   }
 }
@@ -478,7 +515,7 @@ function download() {
   const anchor = document.createElement('a');
   const safe = state.file.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9가-힣_\-. ]/g, '_').slice(0, 80);
   anchor.href = state.resultUrl;
-  anchor.download = `${safe || 'pixellift'}_${state.mode}_${state.factor}x.png`;
+  anchor.download = `${safe || 'pixellift'}_${state.quality}_${state.factor}x.png`;
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
@@ -535,7 +572,18 @@ ui.dropzone.addEventListener('drop', event => {
 });
 ui.file_input.addEventListener('change', event => chooseFile(event.target.files?.[0]));
 ui.remove_file.addEventListener('click', releaseImage);
-document.querySelectorAll('input[name="mode"]').forEach(el => el.addEventListener('change', e => { state.mode = e.target.value; ui.alert.classList.add('hidden'); invalidateResult(); updateOptions(); }));
+document.querySelectorAll('input[name="quality"]').forEach(el => el.addEventListener('change', e => {
+  if (!QUALITY_PRESETS[e.target.value]) return;
+  state.quality = e.target.value;
+  ui.quality_help.textContent = {
+    preserve: '원본 구도를 유지하며 제한적인 AI 디테일만 더합니다.',
+    balanced: '원본을 중심으로 AI 디테일을 적당히 반영합니다.',
+    detail: 'AI가 예측한 디테일을 더 많이 반영해 질감이 바뀔 수 있습니다.',
+  }[state.quality];
+  ui.alert.classList.add('hidden');
+  invalidateResult();
+  updateOptions();
+}));
 document.querySelectorAll('input[name="scale"]').forEach(el => el.addEventListener('change', e => { state.factor = Number(e.target.value); ui.alert.classList.add('hidden'); invalidateResult(); updateOptions(); }));
 ui.compare_range.addEventListener('input', event => setSlider(event.target.value));
 ui.start_btn.addEventListener('click', start);

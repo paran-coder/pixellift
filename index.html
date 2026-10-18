@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#4a154b" />
-  <meta name="description" content="PixelLift — AI로 사진, 일러스트, 애니메이션 이미지를 브라우저에서 2배·4배 확대하세요. 무료, 로그인 불필요." />
+  <meta name="description" content="PixelLift — 이미지 유형 선택 없이 원본 보존 중심으로 브라우저에서 2배·4배 확대하세요. 무료, 로그인 불필요." />
   <meta property="og:type" content="website" />
   <meta property="og:locale" content="ko_KR" />
   <meta property="og:site_name" content="PixelLift" />
   <meta property="og:title" content="PixelLift — 무료 AI 이미지 업스케일러" />
-  <meta property="og:description" content="사진·일러스트·애니메이션을 무료로 2배·4배 확대하세요. 이미지는 내 브라우저에서 처리됩니다." />
+  <meta property="og:description" content="원본 보존·균형·선명도 강화 중 선택해 무료로 2배·4배 확대하세요. 이미지는 내 브라우저에서 처리됩니다." />
   <meta property="og:image" content="__OG_IMAGE_URL__" />
   <meta property="og:image:secure_url" content="__OG_IMAGE_URL__" />
   <meta property="og:image:width" content="1200" />
@@ -18,7 +18,7 @@
   <meta property="og:image:alt" content="PixelLift 무료 AI 이미지 업스케일러 — 이미지 확대 전후 비교" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="PixelLift — 무료 AI 이미지 업스케일러" />
-  <meta name="twitter:description" content="사진·일러스트·애니메이션, 고품질 2배·4배 확대. 브라우저에서 무료 실행." />
+  <meta name="twitter:description" content="원본 보존부터 선명도 강화까지, 2배·4배 확대. 브라우저에서 무료 실행." />
   <meta name="twitter:image" content="__OG_IMAGE_URL__" />
   <title>PixelLift — AI Image Upscaler</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
@@ -42,9 +42,9 @@
     </header>
     <main>
       <section class="hero" aria-labelledby="hero-title">
-        <div class="hero-kicker"><span class="kicker-symbol">✦</span> PIXELLIFT · FREE AI UPSCALER <span class="line"></span> V1.0.4</div>
+        <div class="hero-kicker"><span class="kicker-symbol">✦</span> PIXELLIFT · FREE AI UPSCALER <span class="line"></span> V1.1.0</div>
         <h1 id="hero-title">작은 이미지를<br/><span>더 크고, 더 선명하게.</span></h1>
-        <p>사진·일러스트·애니메이션에 맞는 AI 모델로 디테일을 복원하세요.<br class="desktop-break"/> 브라우저에서 무료로, 최대 4배까지 확대합니다.</p>
+        <p>이미지 종류를 고민하지 마세요. 원본을 최대한 유지하며 선명하게 확대합니다.<br class="desktop-break"/> 브라우저에서 무료로, 최대 4배까지 확대합니다.</p>
         <div class="hero-tags" aria-label="서비스 특징">
           <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg> 100% 무료</span>
           <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg> 업로드 없는 로컬 처리</span>
@@ -55,7 +55,7 @@
         <div class="section-label"><span class="section-count">01</span> 이미지 업스케일러 <span class="section-line"></span><span class="section-sub">브라우저에서 바로 처리</span></div>
         <div class="workspace">
           <div class="workspace-head">
-            <div><h2 id="studio-heading">이미지 업스케일러</h2><p>이미지를 크게 확인하고, 아래에서 유형과 배율을 설정하세요.</p></div>
+            <div><h2 id="studio-heading">이미지 업스케일러</h2><p>이미지를 크게 확인하고, 아래에서 품질과 배율만 선택하세요.</p></div>
             <div class="privacy-label"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg> 로컬 처리</div>
           </div>
           <div class="workspace-body">
@@ -92,12 +92,13 @@
             <div class="setting-side">
               <div class="settings-grid">
                 <div class="setting-block">
-                  <div class="field-title"><span class="field-step">01</span><span>이미지 유형</span><span class="field-hint">전문 모델 선택</span></div>
-                  <div class="mode-group" role="radiogroup" aria-label="이미지 유형">
-                    <label class="mode-option"><input type="radio" name="mode" value="photo" checked /><span class="mode-glyph">◉</span><span class="mode-copy"><strong>사진</strong><small>PHOTO</small></span><span class="mode-check">✓</span></label>
-                    <label class="mode-option"><input type="radio" name="mode" value="illustration" /><span class="mode-glyph">◈</span><span class="mode-copy"><strong>일러스트</strong><small>ILLUSTRATION</small></span><span class="mode-check">✓</span></label>
-                    <label class="mode-option"><input type="radio" name="mode" value="anime" /><span class="mode-glyph">▣</span><span class="mode-copy"><strong>애니메이션</strong><small>ANIME</small></span><span class="mode-check">✓</span></label>
+                  <div class="field-title"><span class="field-step">01</span><span>업스케일 품질</span><span class="field-hint">원본 보존 기본</span></div>
+                  <div class="quality-group" role="radiogroup" aria-label="업스케일 품질">
+                    <label class="quality-option"><input type="radio" name="quality" value="preserve" checked /><span class="quality-name">원본 보존</span><small>형태·색감 우선</small><span class="quality-check" aria-hidden="true">✓</span></label>
+                    <label class="quality-option"><input type="radio" name="quality" value="balanced" /><span class="quality-name">균형</span><small>보존과 선명함</small><span class="quality-check" aria-hidden="true">✓</span></label>
+                    <label class="quality-option"><input type="radio" name="quality" value="detail" /><span class="quality-name">선명도 강화</span><small>디테일 강조</small><span class="quality-check" aria-hidden="true">✓</span></label>
                   </div>
+                  <p class="quality-help" id="quality-help" aria-live="polite">원본 구도를 유지하며 제한적인 AI 디테일만 더합니다.</p>
                 </div>
                 <div class="setting-block">
                   <div class="field-title"><span class="field-step">02</span><span>확대 배율</span><span class="field-hint">출력 크기</span></div>
@@ -116,8 +117,8 @@
           <div class="workspace-bottom"><span>이미지는 서버에 전송되지 않고 사용자의 브라우저에서 처리됩니다.</span></div>
         </div>
       </section>
-      <section id="how-it-works" class="how" aria-labelledby="how-title"><div class="section-label"><span class="section-count">02</span> 이용 방법 <span class="section-line"></span><span class="section-sub">3단계로 완료</span></div><h2 id="how-title">간단하게 업로드하고,<br/><span>차이를 직접 확인하세요.</span></h2><div class="steps"><article><span class="step-num">01 / UPLOAD</span><div class="step-graphic">↥</div><h3>이미지 선택</h3><p>사진, 일러스트 또는 애니메이션 이미지를 업로드하세요.</p></article><article><span class="step-num">02 / ENHANCE</span><div class="step-graphic">✳</div><h3>AI 디테일 복원</h3><p>선택한 이미지에 맞는 초해상도 모델이 로컬에서 실행됩니다.</p></article><article><span class="step-num">03 / EXPORT</span><div class="step-graphic">↗</div><h3>비교하고 저장</h3><p>원본과 결과를 슬라이더로 비교한 뒤 PNG로 다운로드하세요.</p></article></div></section>
-      <div class="disclaimer"><div class="info-circle">i</div><div><strong>고품질 처리 안내</strong><p>AI 모델은 첫 실행 시 다운로드되며, 처리 속도는 브라우저·GPU·이미지 크기에 따라 달라집니다. 실제 존재하지 않았던 세부 질감이 생성될 수 있으므로 중요한 기록이나 증거 사진에는 주의해 주세요.</p></div></div>
+      <section id="how-it-works" class="how" aria-labelledby="how-title"><div class="section-label"><span class="section-count">02</span> 이용 방법 <span class="section-line"></span><span class="section-sub">3단계로 완료</span></div><h2 id="how-title">간단하게 업로드하고,<br/><span>차이를 직접 확인하세요.</span></h2><div class="steps"><article><span class="step-num">01 / UPLOAD</span><div class="step-graphic">↥</div><h3>이미지 선택</h3><p>사진·일러스트·애니메이션을 구분하지 않고 업로드하세요.</p></article><article><span class="step-num">02 / ENHANCE</span><div class="step-graphic">✳</div><h3>AI 디테일 복원</h3><p>범용 AI 모델과 선택한 품질 조절이 브라우저에서 실행됩니다.</p></article><article><span class="step-num">03 / EXPORT</span><div class="step-graphic">↗</div><h3>비교하고 저장</h3><p>원본과 결과를 슬라이더로 비교한 뒤 PNG로 다운로드하세요.</p></article></div></section>
+      <div class="disclaimer"><div class="info-circle">i</div><div><strong>고품질 처리 안내</strong><p>AI 모델은 첫 실행 시 다운로드되며, 처리 속도는 브라우저·GPU·이미지 크기에 따라 달라집니다. 원본 보존 설정에서도 미세한 질감 변화가 있을 수 있으며, 중요한 기록이나 증거 사진에는 주의해 주세요.</p></div></div>
     </main>
     <footer><a class="footer-logo" href="./">pixel<span>lift</span>.</a><p>More detail. Less compromise.</p><div><span>© 2026 PixelLift</span></div></footer>
   </div>

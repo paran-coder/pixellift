@@ -1,14 +1,14 @@
-import { MODEL_CONFIG, MAX_FILE_BYTES, validatePlan, upscaleImage, readStream, verifyModelSha256, errorMessage } from './engine.mjs';
+import { MODEL_CONFIG, MAX_FILE_BYTES, QUALITY_PRESETS, validatePlan, upscaleImage, readStream, verifyModelSha256, errorMessage } from './engine.mjs';
 
 const $ = id => document.getElementById(id);
 const ui = Object.fromEntries([
   'file-input','dropzone','choose-btn','change-image-btn','drop-overlay','drop-main','drop-description','file-pill','file-name','file-meta','remove-file',
-  'output-summary','dimensions-value','start-btn','cancel-btn','gpu-notice','preview-size','empty-preview',
+  'output-summary','dimensions-value','quality-help','start-btn','cancel-btn','gpu-notice','preview-size','empty-preview',
   'compare','before-img','after-img','after-layer','compare-divider','compare-range','preview-caption','result-format',
   'progress-wrap','progress-label','progress-percent','progress-bar','progress-detail','result-actions','result-meta','download-btn','alert',
 ].map(id => [id.replaceAll('-', '_'), $(id)]));
 
-const state = { file: null, bitmap: null, originalUrl: null, resultUrl: null, mode: 'photo', factor: 4, running: false, abort: null, supportsGpu: false, session: null, sessionMode: null, provider: null };
+const state = { file: null, bitmap: null, originalUrl: null, resultUrl: null, quality: 'preserve', factor: 4, running: false, abort: null, supportsGpu: false, session: null, sessionModel: null, provider: null };
 const ONNX_CDN = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
 let runtimePromise;
 let pendingFileSelection = 0;
@@ -156,8 +156,9 @@ async function getOrt() {
   return runtimePromise;
 }
 
-async function openSession(mode, signal, progress) {
-  if (state.session && state.sessionMode === mode) {
+async function openSession(signal, progress) {
+  const mode = 'universal';
+  if (state.session && state.sessionModel === mode) {
     progress(30, `${MODEL_CONFIG[mode].name} 모델 재사용`);
     return { ort: await getOrt(), session: state.session };
   }
@@ -177,7 +178,7 @@ async function openSession(mode, signal, progress) {
   // Do not keep two large models in GPU memory during a mode change.
   try { await state.session?.release?.(); } catch {}
   state.session = null;
-  state.sessionMode = null;
+  state.sessionModel = null;
   let session = null;
   let provider = 'WebGPU';
   if (state.supportsGpu) {
@@ -190,7 +191,7 @@ async function openSession(mode, signal, progress) {
   }
   if (signal.aborted) { await session.release(); throw new DOMException('취소된 작업', 'AbortError'); }
   state.session = session;
-  state.sessionMode = mode;
+  state.sessionModel = mode;
   state.provider = provider;
   progress(29, `모델 준비 완료 · ${provider}`);
   return { ort, session };
@@ -214,13 +215,13 @@ async function start() {
   ui.change_image_btn.disabled = true;
   invalidateResult();
   ui.file_input.disabled = true;
-  document.querySelectorAll('input[name="mode"],input[name="scale"]').forEach(el => el.disabled = true);
+  document.querySelectorAll('input[name="quality"],input[name="scale"]').forEach(el => el.disabled = true);
   const started = performance.now();
   try {
-    const { ort, session } = await openSession(state.mode, abort.signal, (n, label, detail) => setProgress(n, label, detail));
+    const { ort, session } = await openSession(abort.signal, (n, label, detail) => setProgress(n, label, detail));
     if (abort.signal.aborted) throw new DOMException('취소된 작업', 'AbortError');
-    const result = await upscaleImage({ bitmap: state.bitmap, factor: state.factor, mode: state.mode, ort, session, signal: abort.signal,
-      onTile: (done, total) => setProgress(30 + (done / total) * 65, 'AI 디테일 복원 중', `${done}/${total} 타일 처리 · ${state.provider}`),
+    const result = await upscaleImage({ bitmap: state.bitmap, factor: state.factor, quality: state.quality, ort, session, signal: abort.signal,
+      onTile: (done, total) => setProgress(30 + (done / total) * 65, '원본 기반 AI 업스케일 처리 중', `${done}/${total} 타일 처리 · ${state.provider}`),
     });
     if (abort.signal.aborted) throw new DOMException('취소된 작업', 'AbortError');
     setProgress(97, 'PNG 파일을 생성하는 중');
@@ -239,7 +240,7 @@ async function start() {
     ui.dropzone.classList.add('has-result');
     ui.compare_range.disabled = false;
     ui.result_actions.classList.remove('hidden');
-    ui.result_format.textContent = `${state.factor}× / PNG`;
+    ui.result_format.textContent = `${state.factor}× / ${QUALITY_PRESETS[state.quality].label} / PNG`;
     ui.preview_caption.textContent = '슬라이더를 이동해 원본과 AI 결과를 비교하세요';
     ui.result_meta.textContent = `${(state.bitmap.width * state.factor).toLocaleString()} × ${(state.bitmap.height * state.factor).toLocaleString()} · ${((performance.now() - started) / 1000).toFixed(1)}초 · ${state.provider}`;
     setProgress(100, '업스케일 완료');
@@ -260,7 +261,7 @@ async function start() {
     ui.file_input.disabled = false;
     ui.remove_file.disabled = false;
     ui.change_image_btn.disabled = false;
-    document.querySelectorAll('input[name="mode"],input[name="scale"]').forEach(el => el.disabled = false);
+    document.querySelectorAll('input[name="quality"],input[name="scale"]').forEach(el => el.disabled = false);
     updateOptions();
   }
 }
@@ -270,7 +271,7 @@ function download() {
   const anchor = document.createElement('a');
   const safe = state.file.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9가-힣_\-. ]/g, '_').slice(0, 80);
   anchor.href = state.resultUrl;
-  anchor.download = `${safe || 'pixellift'}_${state.mode}_${state.factor}x.png`;
+  anchor.download = `${safe || 'pixellift'}_${state.quality}_${state.factor}x.png`;
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
@@ -327,7 +328,18 @@ ui.dropzone.addEventListener('drop', event => {
 });
 ui.file_input.addEventListener('change', event => chooseFile(event.target.files?.[0]));
 ui.remove_file.addEventListener('click', releaseImage);
-document.querySelectorAll('input[name="mode"]').forEach(el => el.addEventListener('change', e => { state.mode = e.target.value; ui.alert.classList.add('hidden'); invalidateResult(); updateOptions(); }));
+document.querySelectorAll('input[name="quality"]').forEach(el => el.addEventListener('change', e => {
+  if (!QUALITY_PRESETS[e.target.value]) return;
+  state.quality = e.target.value;
+  ui.quality_help.textContent = {
+    preserve: '원본 구도를 유지하며 제한적인 AI 디테일만 더합니다.',
+    balanced: '원본을 중심으로 AI 디테일을 적당히 반영합니다.',
+    detail: 'AI가 예측한 디테일을 더 많이 반영해 질감이 바뀔 수 있습니다.',
+  }[state.quality];
+  ui.alert.classList.add('hidden');
+  invalidateResult();
+  updateOptions();
+}));
 document.querySelectorAll('input[name="scale"]').forEach(el => el.addEventListener('change', e => { state.factor = Number(e.target.value); ui.alert.classList.add('hidden'); invalidateResult(); updateOptions(); }));
 ui.compare_range.addEventListener('input', event => setSlider(event.target.value));
 ui.start_btn.addEventListener('click', start);

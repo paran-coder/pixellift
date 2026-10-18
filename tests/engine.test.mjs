@@ -1,11 +1,34 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTiles, imageDataToCHW, validatePlan, MAX_OUTPUT_PIXELS, MODEL_CONFIG } from '../src/engine.mjs';
+import { createTiles, imageDataToCHW, validatePlan, MAX_OUTPUT_PIXELS, MODEL_CONFIG, QUALITY_PRESETS, mixPreservedPixels, qualityConfig } from '../src/engine.mjs';
 
-test('each image mode loads a distinct ONNX model', () => {
-  assert.equal(Object.keys(MODEL_CONFIG).length, 3);
-  assert.equal(new Set(Object.values(MODEL_CONFIG).map(m => m.url)).size, 3);
-  for (const model of Object.values(MODEL_CONFIG)) assert.ok(model.url.endsWith('/model.onnx'));
+test('one universal model loads regardless of visual category', () => {
+  assert.deepEqual(Object.keys(MODEL_CONFIG), ['universal']);
+  assert.match(MODEL_CONFIG.universal.url, /realesrgan-x4plus.*model.onnx/);
+  assert.deepEqual(Object.keys(QUALITY_PRESETS), ['preserve', 'balanced', 'detail']);
+  assert.throws(() => qualityConfig('photo'));
+});
+
+test('preserve mode anchors color and structure; alpha never changes', () => {
+  const base = Uint8ClampedArray.from([100,110,120,123, 100,110,120,255, 100,110,120,0]);
+  const ai = Uint8ClampedArray.from([210,220,230,255, 210,220,230,0, 210,220,230,255]);
+  const preserved = mixPreservedPixels(base, ai, 3, 1, 'preserve');
+  assert.deepEqual(Array.from(preserved), Array.from(base), 'flat AI output cannot recolor preserve mode');
+  const balanced = mixPreservedPixels(base, ai, 3, 1, 'balanced');
+  const detail = mixPreservedPixels(base, ai, 3, 1, 'detail');
+  assert.ok(balanced[0] > base[0] && detail[0] > balanced[0]);
+  for (let i=3;i<base.length;i+=4) {
+    assert.equal(preserved[i], base[i]); assert.equal(balanced[i], base[i]); assert.equal(detail[i], base[i]);
+  }
+});
+
+test('local AI high frequency contributes without altering preserve mode flat image', () => {
+  const base = Uint8ClampedArray.from([100,100,100,255, 100,100,100,255, 100,100,100,255]);
+  const ai = Uint8ClampedArray.from([100,100,100,255, 230,230,230,255, 100,100,100,255]);
+  const out = mixPreservedPixels(base,ai,3,1,'preserve');
+  assert.ok(out[4]>100);
+  assert.ok(out[0]<=100);
+  assert.throws(() => mixPreservedPixels(base,ai,10,10,'preserve'));
 });
 test('plan supports 2x and 4x pixel scaling', () => {
   assert.deepEqual(validatePlan(800, 600, 2), { width:1600, height:1200, pixels:1_920_000 });
