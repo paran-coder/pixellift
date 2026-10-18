@@ -21,4 +21,4 @@ const ogUrl = hostname && /^[a-zA-Z0-9.-]+$/.test(hostname)
 const html = (await readFile(new URL('index.html', root), 'utf8'))
   .replaceAll('__OG_IMAGE_URL__', ogUrl);
 await writeFile(new URL('index.html', out), html);
-console.log(`PixelLift v1.2.1: dist/ generated (OG image: ${ogUrl})`);
+console.log(`PixelLift v1.3.0: dist/ generated (OG image: ${ogUrl})`);

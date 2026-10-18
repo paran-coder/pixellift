@@ -1,4 +1,4 @@
-"""Chromium integration: mock 4x tensor yields a flat AI prediction; source edge fallback is reported."""
+"""Chromium integration: mock 4x tensor yields a flat AI prediction; weak model gain is reported honestly."""
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 R=Path(__file__).resolve().parents[1]
@@ -32,7 +32,7 @@ with sync_playwright() as p:
     for f in ('2','4'):
         report=result[f]['qualityReport']
         assert result[f]['width']==28*int(f),result
-        assert report['safeFallbackTiles']>=1,report
-        assert report['aiGuidedTiles']+report['safeFallbackTiles']==report['totalTiles'],report
-    print('PASS 2x/4x no-gain edge case -> source-sharpen fallback reported:',result)
+        assert report['limitedImpactTiles']+report['baselineOnlyTiles']>=1,report
+        assert report['aiGuidedTiles']+report['limitedImpactTiles']+report['baselineOnlyTiles']==report['totalTiles'],report
+    print('PASS 2x/4x no-gain edge case -> limited/baseline effect reported:',result)
     page.close();browser.close()

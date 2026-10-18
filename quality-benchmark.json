@@ -1,39 +1,41 @@
 {
-  "disclaimer": "Synthetic AI signal only; target PSNR is valid ONLY for this synthetic fixture and NOT actual image quality",
-  "width": 448,
-  "height": 448,
+  "version": "1.3.0",
+  "type": "independent-synthetic-target",
+  "disclaimer": "This tests one deliberately constructed synthetic case. It is NOT an observed real-image/model performance score, and PSNR cannot measure perceptual benefit alone.",
+  "width": 128,
+  "height": 112,
   "results": [
     {
-      "mode": "bicubic reference",
+      "mode": "baseline",
       "strategy": "interpolation",
-      "meanDifference": 0,
-      "psnrVsSyntheticTarget": 32.93,
+      "psnrAgainstIndependentSyntheticTarget": 32.47,
+      "meanDifferenceFromBaseline": 0,
       "changedFraction": 0,
-      "processingMs": 19.6
+      "processingMs": 5
     },
     {
       "mode": "preserve",
       "strategy": "ai-guided",
-      "meanDifference": 3.902,
-      "psnrVsSyntheticTarget": 33.5,
-      "changedFraction": 0.975,
-      "processingMs": 199.1
+      "psnrAgainstIndependentSyntheticTarget": 36.47,
+      "meanDifferenceFromBaseline": 1.684,
+      "changedFraction": 0.291,
+      "processingMs": 29.7
     },
     {
       "mode": "balanced",
       "strategy": "ai-guided",
-      "meanDifference": 5.393,
-      "psnrVsSyntheticTarget": 33.64,
-      "changedFraction": 0.979,
-      "processingMs": 39.3
+      "psnrAgainstIndependentSyntheticTarget": 38.1,
+      "meanDifferenceFromBaseline": 3.012,
+      "changedFraction": 0.437,
+      "processingMs": 11.8
     },
     {
       "mode": "detail",
       "strategy": "ai-guided",
-      "meanDifference": 5.857,
-      "psnrVsSyntheticTarget": 34.38,
-      "changedFraction": 0.981,
-      "processingMs": 44.1
+      "psnrAgainstIndependentSyntheticTarget": 34.86,
+      "meanDifferenceFromBaseline": 6.301,
+      "changedFraction": 1,
+      "processingMs": 3.3
     }
   ]
 }

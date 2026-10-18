@@ -1,17 +1,18 @@
-# PixelLift v1.2.1 — 변경 컨텍스트
+# PixelLift v1.3.0 — context notes
 
-승인된 변경: 업스케일 후에만 확대 비교를 활성화하며, 기본은 전체 보기. 확대 시 Before/After 같은 확대율과 이동 좌표를 유지한다. 사용자는 마우스/터치 드래그로 이미지를 이동하고 슬라이더 조작을 유지할 수 있어야 한다. 품질 게이트는 일반 확대와의 명확한 이점 및 원본 형태·질감 보존을 함께 판정하되 한 가지 점수로 단정하지 않는다.
+## 사용자 승인 범위
+- 핵심 가치: 원본 형태/화풍/질감을 훼손하지 않는 범위에서 체감 가능한 선명도 향상.
+- 기존 3가지 품질 UI 유지. 코드 수준에서 효과 손실을 진단하고 보존/균형 합성 개선.
+- 다른 초해상도 모델의 성능과 라이선스/브라우저 배포 가능성을 비교; 실측/문헌/추론을 구분.
+- Bicubic 대조/회귀 테스트 도입; 결과가 개선되지 않으면 개선됐다고 주장하지 않음.
+- 브라우저 전용, 무료 Vercel 정적 배포 형태 유지.
 
-# PixelLift v1.2.0 — context notes
+## 기존 문제와 재현 근거
+- v1.2.1 preserve: modelMix=0, 소스 대비 디테일 혼합 제한.
+- 단일 대표 부엉이 이미지에서 원본 보존 결과가 일반 확대와 유사하다고 관찰.
+- 사진 및 부엉이 테스트 ZIP은 별도 입력이며 결과의 지표를 보편화하지 않음.
 
-## Background
-The default Preserve preset in v1.1.0 has `modelMix: 0` and an adjacent-pixel high-pass. Supplied sample comparison found its output very close to standard interpolation, despite running the ONNX model. Users require **preserving original subject/brushwork without wasting GPU inference**.
-
-## Approved scope
-1. Replace one-pixel high-pass with bounded multi-scale source-anchored detail reconstruction.
-2. Measure and handle negligible improvement against a baseline automatically; never silently switch to a more hallucinatory preset.
-3. Add deterministic tests comparing interpolation, Preserve, Balanced, and Detail with structural/integrity metrics.
-4. Preserve existing horizontal 3-card UI, 2x/4x and download behavior.
-
-## Constraints and uncertainty
-No algorithm can mathematically guarantee authentic detail from a single low-resolution source. AI output quality needs testing with original model on real photos and illustrations. Check software licenses separately for publishing. No Vercel/GitHub deployment is included in this change.
+## 전제/미검증
+- 실제 모델 추론을 실행할 수 있는 GPU 브라우저 환경이 제공되지 않을 수 있음.
+- 실제 고해상도 GT 없는 사진의 선명도/원본 충실도는 단일 수치로 평가 불가.
+- 사용자 허가 없이 GitHub/Vercel 프로젝트 변경하지 않음(해당 계정에 새 프로젝트 없음).

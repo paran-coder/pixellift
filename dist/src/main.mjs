@@ -295,7 +295,11 @@ async function start() {
     ui.result_actions.classList.remove('hidden');
     ui.result_format.textContent = `${state.factor}× / ${QUALITY_PRESETS[state.quality].label} / PNG`;
     ui.preview_caption.textContent = '슬라이더를 이동해 원본과 AI 결과를 비교하세요';
-    const fallbackNote = qualityReport?.safeFallbackTiles ? ` · ${qualityReport.safeFallbackTiles}개 타일 원본 기반 선명화` : '';
+    const lowImpact = (qualityReport?.limitedImpactTiles || 0) + (qualityReport?.baselineOnlyTiles || 0);
+    const fallbackNote = lowImpact ? ` · ${lowImpact}개 타일 AI 개선 효과 미미` : '';
+    if (qualityReport?.totalTiles && lowImpact / qualityReport.totalTiles > 0.5) {
+      ui.preview_caption.textContent = '이 이미지에서는 AI 개선 효과가 작습니다. 확대 비교로 확인해 주세요.';
+    }
     ui.result_meta.textContent = `${(state.bitmap.width * state.factor).toLocaleString()} × ${(state.bitmap.height * state.factor).toLocaleString()} · ${((performance.now() - started) / 1000).toFixed(1)}초 · ${state.provider}${fallbackNote}`;
     setProgress(100, '업스케일 완료');
     setSlider(50);
@@ -386,7 +390,7 @@ document.querySelectorAll('input[name="quality"]').forEach(el => el.addEventList
   if (!QUALITY_PRESETS[e.target.value]) return;
   state.quality = e.target.value;
   ui.quality_help.textContent = {
-    preserve: '원본 구조를 기준으로 여러 크기의 디테일을 제한적으로 반영합니다. AI 효과가 약한 부분은 원본 기반 선명화로 대체합니다.',
+    preserve: '원본과 AI 예측의 차이 중 원본 구조에 부합하는 디테일만 제한적으로 반영합니다. 효과가 미미하면 결과에 표시합니다.',
     balanced: '원본을 중심으로 AI 디테일을 적당히 반영합니다.',
     detail: 'AI가 예측한 디테일을 더 많이 반영해 질감이 바뀔 수 있습니다.',
   }[state.quality];

@@ -1,4 +1,4 @@
-/** PixelLift v1.2.0 — browser inference and source-guided multiscale reconstruction. */
+/** PixelLift v1.3.0 — conservative model-residual reconstruction. */
 /** One universal Real-ESRGAN model; quality presets adjust its contribution, not the model identity. */
 export const MODEL_CONFIG = Object.freeze({
   universal: {
@@ -16,9 +16,9 @@ export const MODEL_CONFIG = Object.freeze({
  *  No setting can guarantee recovery of ground-truth detail from a small original.
  */
 export const QUALITY_PRESETS = Object.freeze({
-  preserve: Object.freeze({ modelMix: 0, midGain: .63, fineGain: .40, detailLimit: 20, maxDeviation: 20, label: '원본 보존' }),
-  balanced: Object.freeze({ modelMix: .27, midGain: .75, fineGain: .48, detailLimit: 26, maxDeviation: 58, label: '균형' }),
-  detail: Object.freeze({ modelMix: .72, midGain: .72, fineGain: .40, detailLimit: 34, maxDeviation: 112, label: '선명도 강화' }),
+  preserve: Object.freeze({ modelMix: 0, midGain: 0.80, fineGain: 0.70, detailLimit: 20, maxDeviation: 20, label: '원본 보존' }),
+  balanced: Object.freeze({ modelMix: .20, midGain: .75, fineGain: .63, detailLimit: 25, maxDeviation: 42, label: '균형' }),
+  detail: Object.freeze({ modelMix: .55, midGain: .80, fineGain: .70, detailLimit: 32, maxDeviation: 95, label: '선명도 강화' }),
 });
 
 export function qualityConfig(quality) {
@@ -65,10 +65,15 @@ export function boxBlurRGB(bytes, width, height, radius) {
   return out;
 }
 
-/** Assemble AI's spatial detail bands onto source-based interpolation.
- * Preserve: no low frequency AI colors/geometry (modelMix=0); supported detail only.
- * A source edge mask avoids hallucinating high-frequency texture into flat regions.
- * The per-channel deviation cap is local, not a proof against geometric changes.
+/** Source-guided residual synthesis.
+ * Previous versions copied the *absolute* high-frequency energy of AI output.
+ * That double-counts features already visible in the interpolated baseline and
+ * can re-sharpen lines without restoring any new information.
+ * Here we only use high-frequency differences: (AI highpass - baseline highpass).
+ * Preserve mode rejects low-frequency color/shape changes completely.
+ * A conservative original-edge support mask prevents invented pattern in flat
+ * source regions; opposite-sign local edges are attenuated.
+ * This is a heuristic, NOT a guarantee of faithful ground-truth recovery.
  */
 export function mixPreservedPixels(base, prediction, width, height, quality) {
   const cfg = qualityConfig(quality);
@@ -76,31 +81,44 @@ export function mixPreservedPixels(base, prediction, width, height, quality) {
   if (![width, height].every(n => Number.isSafeInteger(n) && n > 0) || base.length !== count * 4 || prediction.length !== count * 4) {
     throw new Error('업스케일 결과의 픽셀 크기가 일치하지 않습니다.');
   }
-  const fast = boxBlurRGB(prediction, width, height, 2);
-  const slow = boxBlurRGB(prediction, width, height, 7);
-  const sourceSlow = boxBlurRGB(base, width, height, 7);
+  const predFineBlur = boxBlurRGB(prediction, width, height, 2);
+  const predWideBlur = boxBlurRGB(prediction, width, height, 7);
+  const baseFineBlur = boxBlurRGB(base, width, height, 2);
+  const baseWideBlur = boxBlurRGB(base, width, height, 7);
   const output = new Uint8ClampedArray(base.length);
   for (let j = 0; j < count; j++) {
-    const i = j * 4;
-    const k = j * 3;
-    const a = base[i + 3];
-    output[i + 3] = a;
-    if (a === 0) { output[i] = base[i]; output[i + 1] = base[i + 1]; output[i + 2] = base[i + 2]; continue; }
+    const i = j * 4, k = j * 3;
+    const alpha = base[i + 3];
+    output[i + 3] = alpha;
+    if (!alpha) {
+      output[i] = base[i]; output[i + 1] = base[i + 1]; output[i + 2] = base[i + 2];
+      continue;
+    }
     const sourceContrast = Math.max(
-      Math.abs(base[i] - sourceSlow[k]),
-      Math.abs(base[i + 1] - sourceSlow[k + 1]),
-      Math.abs(base[i + 2] - sourceSlow[k + 2]),
+      Math.abs(base[i] - baseWideBlur[k]),
+      Math.abs(base[i + 1] - baseWideBlur[k + 1]),
+      Math.abs(base[i + 2] - baseWideBlur[k + 2]),
     );
-    const supported = clamp((sourceContrast - .35) / 5, 0, 1);
+    // Flat source pixels do not justify drawing model-invented textures.
+    const support = clamp((sourceContrast - .45) / 6, 0, 1);
     for (let c = 0; c < 3; c++) {
-      const sourceBand = base[i + c] - sourceSlow[k + c];
-      const mediumBand = fast[k + c] - slow[k + c];
-      const fineBand = prediction[i + c] - fast[k + c];
-      // Mid-frequency bands disagreeing with the source's local edge are suspect.
-      const alignment = sourceBand * mediumBand < -2 ? .18 : 1;
-      const detail = clamp(supported * (cfg.midGain * mediumBand * alignment + cfg.fineGain * fineBand), -cfg.detailLimit, cfg.detailLimit);
-      const candidate = cfg.modelMix * (prediction[i + c] - base[i + c]) + detail;
-      output[i + c] = base[i + c] + clamp(candidate, -cfg.maxDeviation, cfg.maxDeviation);
+      const sourceMid = baseFineBlur[k + c] - baseWideBlur[k + c];
+      const modelMid = predFineBlur[k + c] - predWideBlur[k + c];
+      const sourceFine = base[i + c] - baseFineBlur[k + c];
+      const modelFine = prediction[i + c] - predFineBlur[k + c];
+      // Residual high-frequency only: not the pre-existing model/source line.
+      const midDelta = modelMid - sourceMid;
+      const fineDelta = modelFine - sourceFine;
+      // Wrong-way model edges must not invert an edge drawn in the original.
+      const midTrust = sourceMid * modelMid < -3 ? .12 : 1;
+      const fineTrust = sourceFine * modelFine < -3 ? .12 : 1;
+      const highFreq = clamp(support * (
+        cfg.midGain * midDelta * midTrust + cfg.fineGain * fineDelta * fineTrust
+      ), -cfg.detailLimit, cfg.detailLimit);
+      // Balanced/detail explicitly permit some model geometry/color change.
+      const lowFreqModel = cfg.modelMix * (prediction[i + c] - base[i + c]);
+      const candidate = clamp(lowFreqModel + highFreq, -cfg.maxDeviation, cfg.maxDeviation);
+      output[i + c] = base[i + c] + candidate;
     }
   }
   return output;
@@ -123,40 +141,41 @@ export function improvementMetrics(base, result, width, height) {
   return { meanDifference: total ? sum / total : 0, changedFraction: total ? changed / total : 0 };
 }
 
-/** Safe visual fallback: sharpen only features already present in the source.
- *  This does not claim to synthesize missing image information.
+/** Gate measures real output difference from baseline but does NOT call large
+ * pixel differences "quality". In particular, it never silently substitutes
+ * sharpened interpolation for ineffective AI output.
  */
-export function sourceSharpenPixels(base, width, height, strength = .68, limit = 12) {
-  if (base.length !== width * height * 4) throw new Error('이미지 크기가 일치하지 않습니다.');
-  const smooth = boxBlurRGB(base, width, height, 2);
-  const out = new Uint8ClampedArray(base.length);
-  for (let p = 0; p < width * height; p++) {
-    const i = p * 4, k = p * 3;
-    out[i + 3] = base[i + 3];
-    for (let c = 0; c < 3; c++) {
-      const edge = base[i + c] - smooth[k + c];
-      out[i + c] = base[i + c] + (Math.abs(edge) < .7 ? 0 : clamp(edge * strength, -limit, limit));
+/** Detect predictions that erase almost all existing source edges.
+ * Such a failed/flat model result is not a usable source of fine detail.
+ */
+export function edgeEnergyRatio(base, prediction, width, height) {
+  if (base.length !== prediction.length || base.length !== width * height * 4) throw new Error('이미지 크기가 일치하지 않습니다.');
+  let b=0,p=0,count=0;
+  const stride=Math.max(1,Math.floor((width*height)/5000));
+  for(let at=0;at<width*height;at+=stride){
+    const x=at%width, y=Math.floor(at/width);
+    if(x>=width-1 || y>=height-1)continue;
+    const i=at*4,j=i+4,k=i+width*4;
+    if(base[i+3]<8)continue;
+    for(let c=0;c<3;c++) {
+      b+=Math.abs(base[i+c]-base[j+c])+Math.abs(base[i+c]-base[k+c]);
+      p+=Math.abs(prediction[i+c]-prediction[j+c])+Math.abs(prediction[i+c]-prediction[k+c]);
     }
+    count++;
   }
-  return out;
+  return { source: count?b/(count*6):0, model: count?p/(count*6):0, ratio:b>0?p/b:1 };
 }
 
-/** Automatic quality gate. Never escalates to Balanced/Detail without user choice.
- *  When AI contributes almost nothing, conservatively enhance existing source edges.
- */
 export function composeAdaptivePixels(base, prediction, width, height, quality) {
-  const result = mixPreservedPixels(base, prediction, width, height, quality);
-  const metrics = improvementMetrics(base, result, width, height);
-  const predictionMetrics = quality === 'preserve' ? improvementMetrics(base, prediction, width, height) : null;
-  const predictionIsBaseline = predictionMetrics && predictionMetrics.meanDifference < .8 && predictionMetrics.changedFraction < .10;
-  if (quality === 'preserve' && (predictionIsBaseline || metrics.meanDifference < .72 || metrics.changedFraction < .10)) {
-    const safe = sourceSharpenPixels(base, width, height);
-    const safeMetrics = improvementMetrics(base, safe, width, height);
-    if (safeMetrics.meanDifference > .02 && (predictionIsBaseline || safeMetrics.meanDifference > metrics.meanDifference + .05)) {
-      return { pixels: safe, strategy: 'source-sharpen', metrics: safeMetrics };
-    }
+  const predictedChange = improvementMetrics(base, prediction, width, height);
+  const contrast = edgeEnergyRatio(base, prediction, width, height);
+  if (predictedChange.meanDifference < 0.08 || (contrast.source >= 0.5 && contrast.ratio < 0.15)) {
+    return { pixels: new Uint8ClampedArray(base), strategy: 'baseline-only', metrics: { meanDifference: 0, changedFraction: 0 } };
   }
-  return { pixels: result, strategy: 'ai-guided', metrics };
+  const pixels = mixPreservedPixels(base, prediction, width, height, quality);
+  const metrics = improvementMetrics(base, pixels, width, height);
+  const limited = metrics.meanDifference < 0.8 || metrics.changedFraction < 0.10;
+  return { pixels, strategy: limited ? 'limited-impact' : 'ai-guided', metrics };
 }
 
 export const MAX_FILE_BYTES = 20 * 1024 * 1024;
@@ -244,7 +263,7 @@ export async function upscaleImage({ bitmap, factor, quality = 'preserve', ort, 
   const destCtx = destination.getContext('2d', { willReadFrequently: false });
   if (!destCtx) { source.width = source.height = 0; throw new Error('출력 캔버스를 생성할 수 없습니다.'); }
   let completed = false;
-  const strategies = { aiGuidedTiles: 0, safeFallbackTiles: 0 };
+  const strategies = { aiGuidedTiles: 0, limitedImpactTiles: 0, baselineOnlyTiles: 0 };
   try {
   destCtx.imageSmoothingEnabled = true;
   destCtx.imageSmoothingQuality = 'high';
@@ -276,7 +295,8 @@ export async function upscaleImage({ bitmap, factor, quality = 'preserve', ort, 
       const baseline = baseCtx.getImageData(0, 0, outW, outH);
       const composition = composeAdaptivePixels(baseline.data, predicted.data, outW, outH, quality);
       const composed = composition.pixels;
-      if (composition.strategy === 'source-sharpen') strategies.safeFallbackTiles++;
+      if (composition.strategy === 'baseline-only') strategies.baselineOnlyTiles++;
+      else if (composition.strategy === 'limited-impact') strategies.limitedImpactTiles++;
       else strategies.aiGuidedTiles++;
       const temp = document.createElement('canvas');
       temp.width = outW;

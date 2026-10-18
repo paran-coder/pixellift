@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   boxBlurRGB, mixPreservedPixels, composeAdaptivePixels,
-  improvementMetrics, sourceSharpenPixels,
+  improvementMetrics,
 } from '../src/engine.mjs';
 
 function makeImage(width, height, pixel) {
@@ -65,14 +65,13 @@ test('preserve adds coherent high frequency to a real source edge and bounds cha
  assert.ok(metrics.changedFraction > .03);
 });
 
-test('the fallback detects ineffective AI and uses conservative source-based sharpening',()=>{
+test('ineffective AI is reported instead of mislabeling sharpened interpolation as AI',()=>{
  const {pixels,strategy}=composeAdaptivePixels(baseline,baseline,w,h,'preserve');
- assert.equal(strategy,'source-sharpen');
- assert.ok(meanDistance(pixels,baseline)>0);
- assert.ok(meanDistance(pixels,baseline)<5);
+ assert.equal(strategy,'baseline-only');
+ assert.deepEqual(pixels,baseline);
  const flat=makeImage(w,h,()=>[130,130,130,255]);
  const noChange=composeAdaptivePixels(flat,flat,w,h,'preserve');
- assert.equal(noChange.strategy,'ai-guided');
+ assert.equal(noChange.strategy,'baseline-only');
  assert.deepEqual(noChange.pixels,flat);
 });
 
