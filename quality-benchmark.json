@@ -1,0 +1,39 @@
+{
+  "disclaimer": "Synthetic AI signal only; target PSNR is valid ONLY for this synthetic fixture and NOT actual image quality",
+  "width": 448,
+  "height": 448,
+  "results": [
+    {
+      "mode": "bicubic reference",
+      "strategy": "interpolation",
+      "meanDifference": 0,
+      "psnrVsSyntheticTarget": 32.93,
+      "changedFraction": 0,
+      "processingMs": 19.6
+    },
+    {
+      "mode": "preserve",
+      "strategy": "ai-guided",
+      "meanDifference": 3.902,
+      "psnrVsSyntheticTarget": 33.5,
+      "changedFraction": 0.975,
+      "processingMs": 199.1
+    },
+    {
+      "mode": "balanced",
+      "strategy": "ai-guided",
+      "meanDifference": 5.393,
+      "psnrVsSyntheticTarget": 33.64,
+      "changedFraction": 0.979,
+      "processingMs": 39.3
+    },
+    {
+      "mode": "detail",
+      "strategy": "ai-guided",
+      "meanDifference": 5.857,
+      "psnrVsSyntheticTarget": 34.38,
+      "changedFraction": 0.981,
+      "processingMs": 44.1
+    }
+  ]
+}

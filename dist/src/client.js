@@ -1,6 +1,6 @@
 /* PixelLift browser bundle — generated. Do not edit. */
 (() => {
-/** PixelLift v1.0.1 — Real-ESRGAN browser inference core. */
+/** PixelLift v1.2.0 — browser inference and source-guided multiscale reconstruction. */
 /** One universal Real-ESRGAN model; quality presets adjust its contribution, not the model identity. */
 const MODEL_CONFIG = Object.freeze({
   universal: {
@@ -14,14 +14,13 @@ const MODEL_CONFIG = Object.freeze({
   },
 });
 
-/** Preservation-first hybrid: the source-resampled image anchors low frequencies.
- *  The higher presets deliberately mix more of the AI prediction and may alter textures.
- *  These coefficients are starting points, not validated perceptual guarantees.
+/** Quality means the permissible departure from the source-resampled baseline.
+ *  No setting can guarantee recovery of ground-truth detail from a small original.
  */
 const QUALITY_PRESETS = Object.freeze({
-  preserve: Object.freeze({ modelMix: 0, detailGain: .60, detailLimit: 14, label: '원본 보존' }),
-  balanced: Object.freeze({ modelMix: .24, detailGain: .72, detailLimit: 25, label: '균형' }),
-  detail: Object.freeze({ modelMix: .64, detailGain: .38, detailLimit: 38, label: '선명도 강화' }),
+  preserve: Object.freeze({ modelMix: 0, midGain: .63, fineGain: .40, detailLimit: 20, maxDeviation: 20, label: '원본 보존' }),
+  balanced: Object.freeze({ modelMix: .27, midGain: .75, fineGain: .48, detailLimit: 26, maxDeviation: 58, label: '균형' }),
+  detail: Object.freeze({ modelMix: .72, midGain: .72, fineGain: .40, detailLimit: 34, maxDeviation: 112, label: '선명도 강화' }),
 });
 
 function qualityConfig(quality) {
@@ -30,34 +29,136 @@ function qualityConfig(quality) {
   return config;
 }
 
-/** Output RGBA; alpha is copied from the source-resampled base, not invented by AI. */
-function mixPreservedPixels(base, prediction, width, height, quality) {
-  const { modelMix, detailGain, detailLimit } = qualityConfig(quality);
-  const size = width * height * 4;
-  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || base.length !== size || prediction.length !== size) {
-    throw new Error('업스케일 결과의 픽셀 크기가 일치하지 않습니다.');
-  }
-  const result = new Uint8ClampedArray(size);
-  const row = width * 4;
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const byteIndex = (x, y, width) => (y * width + x) * 4;
+
+/** Separable box filter; radius 2 and 7 operate at different spatial scales.
+ *  Linear complexity per pixel and bounded memory for tile-based rendering.
+ */
+function boxBlurRGB(bytes, width, height, radius) {
+  const count = width * height;
+  if (bytes.length !== count * 4 || !Number.isInteger(radius) || radius < 1) throw new Error('블러 입력값이 올바르지 않습니다.');
+  const temp = new Float32Array(count * 3);
+  const out = new Float32Array(count * 3);
+  // Horizontal running-sum box filter, replicated borders.
   for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4;
-      const left = x ? i - 4 : i;
-      const right = x + 1 < width ? i + 4 : i;
-      const top = y ? i - row : i;
-      const bottom = y + 1 < height ? i + row : i;
-      for (let c = 0; c < 3; c++) {
-        const ai = prediction[i + c];
-        // Cross-neighborhood high-pass. Missing low frequencies are never copied
-        // wholesale in Preserve mode, preventing large-scale hallucination.
-        const low = (ai * 4 + prediction[left + c] + prediction[right + c] + prediction[top + c] + prediction[bottom + c]) / 8;
-        const detail = Math.max(-detailLimit, Math.min(detailLimit, (ai - low) * detailGain));
-        result[i + c] = base[i + c] + modelMix * (ai - base[i + c]) + detail;
+    for (let c = 0; c < 3; c++) {
+      let sum = bytes[byteIndex(0, y, width) + c] * (radius + 1);
+      for (let k = 1; k <= radius; k++) sum += bytes[byteIndex(Math.min(k, width - 1), y, width) + c];
+      for (let x = 0; x < width; x++) {
+        temp[(y * width + x) * 3 + c] = sum / (radius * 2 + 1);
+        sum += bytes[byteIndex(Math.min(width - 1, x + radius + 1), y, width) + c];
+        sum -= bytes[byteIndex(Math.max(0, x - radius), y, width) + c];
       }
-      result[i + 3] = base[i + 3];
     }
   }
-  return result;
+  // Vertical running sum.
+  for (let x = 0; x < width; x++) {
+    for (let c = 0; c < 3; c++) {
+      let sum = temp[(x) * 3 + c] * (radius + 1);
+      for (let k = 1; k <= radius; k++) sum += temp[(Math.min(k, height - 1) * width + x) * 3 + c];
+      for (let y = 0; y < height; y++) {
+        out[(y * width + x) * 3 + c] = sum / (radius * 2 + 1);
+        sum += temp[(Math.min(height - 1, y + radius + 1) * width + x) * 3 + c];
+        sum -= temp[(Math.max(0, y - radius) * width + x) * 3 + c];
+      }
+    }
+  }
+  return out;
+}
+
+/** Assemble AI's spatial detail bands onto source-based interpolation.
+ * Preserve: no low frequency AI colors/geometry (modelMix=0); supported detail only.
+ * A source edge mask avoids hallucinating high-frequency texture into flat regions.
+ * The per-channel deviation cap is local, not a proof against geometric changes.
+ */
+function mixPreservedPixels(base, prediction, width, height, quality) {
+  const cfg = qualityConfig(quality);
+  const count = width * height;
+  if (![width, height].every(n => Number.isSafeInteger(n) && n > 0) || base.length !== count * 4 || prediction.length !== count * 4) {
+    throw new Error('업스케일 결과의 픽셀 크기가 일치하지 않습니다.');
+  }
+  const fast = boxBlurRGB(prediction, width, height, 2);
+  const slow = boxBlurRGB(prediction, width, height, 7);
+  const sourceSlow = boxBlurRGB(base, width, height, 7);
+  const output = new Uint8ClampedArray(base.length);
+  for (let j = 0; j < count; j++) {
+    const i = j * 4;
+    const k = j * 3;
+    const a = base[i + 3];
+    output[i + 3] = a;
+    if (a === 0) { output[i] = base[i]; output[i + 1] = base[i + 1]; output[i + 2] = base[i + 2]; continue; }
+    const sourceContrast = Math.max(
+      Math.abs(base[i] - sourceSlow[k]),
+      Math.abs(base[i + 1] - sourceSlow[k + 1]),
+      Math.abs(base[i + 2] - sourceSlow[k + 2]),
+    );
+    const supported = clamp((sourceContrast - .35) / 5, 0, 1);
+    for (let c = 0; c < 3; c++) {
+      const sourceBand = base[i + c] - sourceSlow[k + c];
+      const mediumBand = fast[k + c] - slow[k + c];
+      const fineBand = prediction[i + c] - fast[k + c];
+      // Mid-frequency bands disagreeing with the source's local edge are suspect.
+      const alignment = sourceBand * mediumBand < -2 ? .18 : 1;
+      const detail = clamp(supported * (cfg.midGain * mediumBand * alignment + cfg.fineGain * fineBand), -cfg.detailLimit, cfg.detailLimit);
+      const candidate = cfg.modelMix * (prediction[i + c] - base[i + c]) + detail;
+      output[i + c] = base[i + c] + clamp(candidate, -cfg.maxDeviation, cfg.maxDeviation);
+    }
+  }
+  return output;
+}
+
+/** Compare to interpolation on source-supported pixels rather than rewarding
+ *  large or fabricated changes in blank/background regions.
+ */
+function improvementMetrics(base, result, width, height) {
+  if (base.length !== result.length || base.length !== width * height * 4) throw new Error('비교할 이미지 크기가 일치하지 않습니다.');
+  let changed = 0, total = 0, sum = 0;
+  const step = Math.max(1, Math.floor((width * height) / 16000));
+  for (let p = 0; p < width * height; p += step) {
+    const i = p * 4;
+    if (base[i + 3] < 8) continue;
+    const delta = (Math.abs(base[i] - result[i]) + Math.abs(base[i + 1] - result[i + 1]) + Math.abs(base[i + 2] - result[i + 2])) / 3;
+    sum += delta; total++;
+    if (delta >= 1.25) changed++;
+  }
+  return { meanDifference: total ? sum / total : 0, changedFraction: total ? changed / total : 0 };
+}
+
+/** Safe visual fallback: sharpen only features already present in the source.
+ *  This does not claim to synthesize missing image information.
+ */
+function sourceSharpenPixels(base, width, height, strength = .68, limit = 12) {
+  if (base.length !== width * height * 4) throw new Error('이미지 크기가 일치하지 않습니다.');
+  const smooth = boxBlurRGB(base, width, height, 2);
+  const out = new Uint8ClampedArray(base.length);
+  for (let p = 0; p < width * height; p++) {
+    const i = p * 4, k = p * 3;
+    out[i + 3] = base[i + 3];
+    for (let c = 0; c < 3; c++) {
+      const edge = base[i + c] - smooth[k + c];
+      out[i + c] = base[i + c] + (Math.abs(edge) < .7 ? 0 : clamp(edge * strength, -limit, limit));
+    }
+  }
+  return out;
+}
+
+/** Automatic quality gate. Never escalates to Balanced/Detail without user choice.
+ *  When AI contributes almost nothing, conservatively enhance existing source edges.
+ */
+function composeAdaptivePixels(base, prediction, width, height, quality) {
+  const result = mixPreservedPixels(base, prediction, width, height, quality);
+  const metrics = improvementMetrics(base, result, width, height);
+  const predictionMetrics = quality === 'preserve' ? improvementMetrics(base, prediction, width, height) : null;
+  const predictionIsBaseline = predictionMetrics && predictionMetrics.meanDifference < .8 && predictionMetrics.changedFraction < .10;
+  if (quality === 'preserve' && (predictionIsBaseline || metrics.meanDifference < .72 || metrics.changedFraction < .10)) {
+    const safe = sourceSharpenPixels(base, width, height);
+    const safeMetrics = improvementMetrics(base, safe, width, height);
+    if (safeMetrics.meanDifference > .02 && (predictionIsBaseline || safeMetrics.meanDifference > metrics.meanDifference + .05)) {
+      return { pixels: safe, strategy: 'source-sharpen', metrics: safeMetrics };
+    }
+  }
+  return { pixels: result, strategy: 'ai-guided', metrics };
 }
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
@@ -128,7 +229,7 @@ function errorMessage(error) {
 
 const disposed = tensor => { try { tensor?.dispose?.(); } catch {} };
 
-async function upscaleImage({ bitmap, factor, quality = 'preserve', ort, session, signal, onTile }) {
+async function upscaleImage({ bitmap, factor, quality = 'preserve', ort, session, signal, onTile, onQualityReport }) {
   const { width, height } = bitmap;
   const plan = validatePlan(width, height, factor);
   qualityConfig(quality);
@@ -145,6 +246,7 @@ async function upscaleImage({ bitmap, factor, quality = 'preserve', ort, session
   const destCtx = destination.getContext('2d', { willReadFrequently: false });
   if (!destCtx) { source.width = source.height = 0; throw new Error('출력 캔버스를 생성할 수 없습니다.'); }
   let completed = false;
+  const strategies = { aiGuidedTiles: 0, safeFallbackTiles: 0 };
   try {
   destCtx.imageSmoothingEnabled = true;
   destCtx.imageSmoothingQuality = 'high';
@@ -174,7 +276,10 @@ async function upscaleImage({ bitmap, factor, quality = 'preserve', ort, session
       baseCtx.imageSmoothingQuality = 'high';
       baseCtx.drawImage(source, t.sx, t.sy, t.sw, t.sh, 0, 0, outW, outH);
       const baseline = baseCtx.getImageData(0, 0, outW, outH);
-      const composed = mixPreservedPixels(baseline.data, predicted.data, outW, outH, quality);
+      const composition = composeAdaptivePixels(baseline.data, predicted.data, outW, outH, quality);
+      const composed = composition.pixels;
+      if (composition.strategy === 'source-sharpen') strategies.safeFallbackTiles++;
+      else strategies.aiGuidedTiles++;
       const temp = document.createElement('canvas');
       temp.width = outW;
       temp.height = outH;
@@ -197,6 +302,7 @@ async function upscaleImage({ bitmap, factor, quality = 'preserve', ort, session
     await new Promise(resolve => setTimeout(resolve, 0));
   }
   completed = true;
+  onQualityReport?.({ ...strategies, totalTiles: tiles.length });
   return destination;
   } finally {
     source.width = source.height = 0;
@@ -464,7 +570,9 @@ async function start() {
   try {
     const { ort, session } = await openSession(abort.signal, (n, label, detail) => setProgress(n, label, detail));
     if (abort.signal.aborted) throw new DOMException('취소된 작업', 'AbortError');
+    let qualityReport = null;
     const result = await upscaleImage({ bitmap: state.bitmap, factor: state.factor, quality: state.quality, ort, session, signal: abort.signal,
+      onQualityReport: report => { qualityReport = report; },
       onTile: (done, total) => setProgress(30 + (done / total) * 65, '원본 기반 AI 업스케일 처리 중', `${done}/${total} 타일 처리 · ${state.provider}`),
     });
     if (abort.signal.aborted) throw new DOMException('취소된 작업', 'AbortError');
@@ -486,7 +594,8 @@ async function start() {
     ui.result_actions.classList.remove('hidden');
     ui.result_format.textContent = `${state.factor}× / ${QUALITY_PRESETS[state.quality].label} / PNG`;
     ui.preview_caption.textContent = '슬라이더를 이동해 원본과 AI 결과를 비교하세요';
-    ui.result_meta.textContent = `${(state.bitmap.width * state.factor).toLocaleString()} × ${(state.bitmap.height * state.factor).toLocaleString()} · ${((performance.now() - started) / 1000).toFixed(1)}초 · ${state.provider}`;
+    const fallbackNote = qualityReport?.safeFallbackTiles ? ` · ${qualityReport.safeFallbackTiles}개 타일 원본 기반 선명화` : '';
+    ui.result_meta.textContent = `${(state.bitmap.width * state.factor).toLocaleString()} × ${(state.bitmap.height * state.factor).toLocaleString()} · ${((performance.now() - started) / 1000).toFixed(1)}초 · ${state.provider}${fallbackNote}`;
     setProgress(100, '업스케일 완료');
     setSlider(50);
   } catch (error) {
@@ -576,7 +685,7 @@ document.querySelectorAll('input[name="quality"]').forEach(el => el.addEventList
   if (!QUALITY_PRESETS[e.target.value]) return;
   state.quality = e.target.value;
   ui.quality_help.textContent = {
-    preserve: '원본 구도를 유지하며 제한적인 AI 디테일만 더합니다.',
+    preserve: '원본 구조를 기준으로 여러 크기의 디테일을 제한적으로 반영합니다. AI 효과가 약한 부분은 원본 기반 선명화로 대체합니다.',
     balanced: '원본을 중심으로 AI 디테일을 적당히 반영합니다.',
     detail: 'AI가 예측한 디테일을 더 많이 반영해 질감이 바뀔 수 있습니다.',
   }[state.quality];

@@ -1,15 +1,13 @@
-# PixelLift v1.1.0 — Context Notes
+# PixelLift v1.2.0 — context notes
 
-## 결정사항
-- 기존 v1.0.4에서 이미지 유형(사진/일러스트/애니메이션) 수동 선택 UI 제거
-- 범용 RealESRGAN_x4plus 하나 사용(사진/일러스트 지원, 유형별 우위 주장 금지)
-- 세 가지 품질 프리셋: 원본 보존(기본), 균형, 선명도 강화
-- 3개 품질 카드를 항상 한 줄에 나란히 배치하고 원본 보존을 초기 선택
-- 2×/4× 확대 옵션 및 업로드/드래그앤드롭, 비교, 다운로드 보존
-- 세 품질 옵션을 실제 픽셀 처리에 반영; 구조 보존을 우선하는 베이스+제한적 AI 디테일 하이브리드
-- 제출 시 버전 v1.1.0, 정적 Vercel 배포 가능
+## Background
+The default Preserve preset in v1.1.0 has `modelMix: 0` and an adjacent-pixel high-pass. Supplied sample comparison found its output very close to standard interpolation, despite running the ONNX model. Users require **preserving original subject/brushwork without wasting GPU inference**.
 
-## 위험과 검증
-- AI로 변형이 절대 0이라는 보장은 할 수 없음. 보존형은 원본 베이스를 유지하고 추가 디테일만 제한.
-- 모델 파일 외부 CDN 다운로드가 필요한 GPU 실제 추론은 온라인 환경에서 별도 검증 필요.
-- unit / 브라우저 선택 / 반응형 폭 / 이미지 처리 시뮬레이션 검증.
+## Approved scope
+1. Replace one-pixel high-pass with bounded multi-scale source-anchored detail reconstruction.
+2. Measure and handle negligible improvement against a baseline automatically; never silently switch to a more hallucinatory preset.
+3. Add deterministic tests comparing interpolation, Preserve, Balanced, and Detail with structural/integrity metrics.
+4. Preserve existing horizontal 3-card UI, 2x/4x and download behavior.
+
+## Constraints and uncertainty
+No algorithm can mathematically guarantee authentic detail from a single low-resolution source. AI output quality needs testing with original model on real photos and illustrations. Check software licenses separately for publishing. No Vercel/GitHub deployment is included in this change.

@@ -26,8 +26,7 @@ test('local AI high frequency contributes without altering preserve mode flat im
   const base = Uint8ClampedArray.from([100,100,100,255, 100,100,100,255, 100,100,100,255]);
   const ai = Uint8ClampedArray.from([100,100,100,255, 230,230,230,255, 100,100,100,255]);
   const out = mixPreservedPixels(base,ai,3,1,'preserve');
-  assert.ok(out[4]>100);
-  assert.ok(out[0]<=100);
+  assert.deepEqual(out, base, 'flat input suppresses unsupported AI-only hallucination');
   assert.throws(() => mixPreservedPixels(base,ai,10,10,'preserve'));
 });
 test('plan supports 2x and 4x pixel scaling', () => {

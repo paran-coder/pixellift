@@ -1,4 +1,4 @@
-"""PixelLift v1.1.0 UI: browser regressions for full-width interactive preview."""
+"""PixelLift v1.2.0 UI: browser regressions for full-width interactive preview."""
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from PIL import Image
@@ -67,9 +67,9 @@ with sync_playwright() as p:
   page.wait_for_function('document.querySelector("#file-name").textContent.includes("changed")')
   assert not errors,(width,errors)
   if width==390:
-   page.screenshot(path='/mnt/data/pixellift-v1.1.0-preview-mobile.png',full_page=True)
+   page.screenshot(path='/mnt/data/pixellift-v1.2.0-preview-mobile.png',full_page=True)
   if width==1440:
-   page.screenshot(path='/mnt/data/pixellift-v1.1.0-preview-desktop.png',full_page=True)
+   page.screenshot(path='/mnt/data/pixellift-v1.2.0-preview-desktop.png',full_page=True)
   print(f'PASS {width}px | full-width preview, picker, drag&drop, keyboard, quality and scale')
   page.close()
  browser.close()

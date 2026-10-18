@@ -220,7 +220,9 @@ async function start() {
   try {
     const { ort, session } = await openSession(abort.signal, (n, label, detail) => setProgress(n, label, detail));
     if (abort.signal.aborted) throw new DOMException('취소된 작업', 'AbortError');
+    let qualityReport = null;
     const result = await upscaleImage({ bitmap: state.bitmap, factor: state.factor, quality: state.quality, ort, session, signal: abort.signal,
+      onQualityReport: report => { qualityReport = report; },
       onTile: (done, total) => setProgress(30 + (done / total) * 65, '원본 기반 AI 업스케일 처리 중', `${done}/${total} 타일 처리 · ${state.provider}`),
     });
     if (abort.signal.aborted) throw new DOMException('취소된 작업', 'AbortError');
@@ -242,7 +244,8 @@ async function start() {
     ui.result_actions.classList.remove('hidden');
     ui.result_format.textContent = `${state.factor}× / ${QUALITY_PRESETS[state.quality].label} / PNG`;
     ui.preview_caption.textContent = '슬라이더를 이동해 원본과 AI 결과를 비교하세요';
-    ui.result_meta.textContent = `${(state.bitmap.width * state.factor).toLocaleString()} × ${(state.bitmap.height * state.factor).toLocaleString()} · ${((performance.now() - started) / 1000).toFixed(1)}초 · ${state.provider}`;
+    const fallbackNote = qualityReport?.safeFallbackTiles ? ` · ${qualityReport.safeFallbackTiles}개 타일 원본 기반 선명화` : '';
+    ui.result_meta.textContent = `${(state.bitmap.width * state.factor).toLocaleString()} × ${(state.bitmap.height * state.factor).toLocaleString()} · ${((performance.now() - started) / 1000).toFixed(1)}초 · ${state.provider}${fallbackNote}`;
     setProgress(100, '업스케일 완료');
     setSlider(50);
   } catch (error) {
@@ -332,7 +335,7 @@ document.querySelectorAll('input[name="quality"]').forEach(el => el.addEventList
   if (!QUALITY_PRESETS[e.target.value]) return;
   state.quality = e.target.value;
   ui.quality_help.textContent = {
-    preserve: '원본 구도를 유지하며 제한적인 AI 디테일만 더합니다.',
+    preserve: '원본 구조를 기준으로 여러 크기의 디테일을 제한적으로 반영합니다. AI 효과가 약한 부분은 원본 기반 선명화로 대체합니다.',
     balanced: '원본을 중심으로 AI 디테일을 적당히 반영합니다.',
     detail: 'AI가 예측한 디테일을 더 많이 반영해 질감이 바뀔 수 있습니다.',
   }[state.quality];

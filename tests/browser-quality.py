@@ -1,4 +1,4 @@
-"""PixelLift v1.1.0 responsive radio and file interactions on real Chromium. No CDN needed."""
+"""PixelLift v1.2.0 responsive radio and file interactions on real Chromium. No CDN needed."""
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from PIL import Image
@@ -38,9 +38,9 @@ with sync_playwright() as p:
         page.wait_for_function('document.querySelector("#dimensions-value").textContent.includes("192")')
         assert page.locator('#start-btn').is_enabled()
         if width==390:
-            page.screenshot(path='/mnt/data/pixellift-v1.1.0-mobile.png',full_page=True)
+            page.screenshot(path='/mnt/data/pixellift-v1.2.0-mobile.png',full_page=True)
         if width==1440:
-            page.screenshot(path='/mnt/data/pixellift-v1.1.0-desktop.png',full_page=True)
+            page.screenshot(path='/mnt/data/pixellift-v1.2.0-desktop.png',full_page=True)
         assert not errors,(width,errors)
         print(f'PASS {width}px — three horizontal cards; selected states; 2x plan; file upload')
         page.close()
