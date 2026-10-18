@@ -12,13 +12,10 @@ await writeFile(new URL('src/client.js', out), bundle);
 for (const file of ['styles.css', 'favicon.svg', 'og-image.png', 'demo-comparison.jpg', 'src/engine.mjs', 'src/main.mjs']) {
   await copyFile(new URL(file, root), new URL(file, out));
 }
-// OG crawlers require absolute image URLs; Vercel exposes its deployment hostname at build time.
-// Fall back to the root-relative file for local builds only.
-const hostname = process.env.VERCEL_URL;
-const ogUrl = hostname && /^[a-zA-Z0-9.-]+$/.test(hostname)
-  ? `https://${hostname}/og-image.png`
-  : '/og-image.png';
-const html = (await readFile(new URL('index.html', root), 'utf8'))
-  .replaceAll('__OG_IMAGE_URL__', ogUrl);
+// The site's public canonical hostname is stable across production and preview builds.
+// Social crawlers must not use VERCEL_URL (an ephemeral deployment hostname).
+const siteUrl = 'https://pixellift-inky.vercel.app/';
+const ogUrl = new URL('og-image.png', siteUrl).href;
+const html = await readFile(new URL('index.html', root), 'utf8');
 await writeFile(new URL('index.html', out), html);
 console.log(`PixelLift v1.3.0: dist/ generated (OG image: ${ogUrl})`);
