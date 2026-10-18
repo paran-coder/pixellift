@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#4a154b" />
+  <meta name="description" content="PixelLift — AI로 사진, 일러스트, 애니메이션 이미지를 브라우저에서 2배·4배 확대하세요. 무료, 로그인 불필요." />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="ko_KR" />
+  <meta property="og:site_name" content="PixelLift" />
+  <meta property="og:title" content="PixelLift — 무료 AI 이미지 업스케일러" />
+  <meta property="og:description" content="사진·일러스트·애니메이션을 무료로 2배·4배 확대하세요. 이미지는 내 브라우저에서 처리됩니다." />
+  <meta property="og:image" content="__OG_IMAGE_URL__" />
+  <meta property="og:image:secure_url" content="__OG_IMAGE_URL__" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:alt" content="PixelLift 무료 AI 이미지 업스케일러 — 이미지 확대 전후 비교" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="PixelLift — 무료 AI 이미지 업스케일러" />
+  <meta name="twitter:description" content="사진·일러스트·애니메이션, 고품질 2배·4배 확대. 브라우저에서 무료 실행." />
+  <meta name="twitter:image" content="__OG_IMAGE_URL__" />
+  <title>PixelLift — AI Image Upscaler</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script defer src="./src/client.js"></script>
+</head>
+<body>
+  
+  <div class="shell">
+    <header class="header">
+      <a class="brand" href="./" aria-label="PixelLift 홈">
+        <span class="brand-icon" aria-hidden="true"><svg viewBox="0 0 28 28" fill="none"><path d="M5 20.5 14 5l9 15.5M8.6 14.5h10.8" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 5v6M19 8h6" stroke="#A9FCDF" stroke-width="2" stroke-linecap="round"/></svg></span>
+        <span>pixel<span class="brand-lift">lift</span><span class="brand-period">.</span></span>
+      </a>
+      <nav class="header-nav" aria-label="기본 탐색">
+        <a href="#studio">스튜디오</a>
+        <a href="#how-it-works">작동 방식</a>
+        <a href="https://github.com/xinntao/Real-ESRGAN" target="_blank" rel="noopener noreferrer">AI 모델 <span aria-hidden="true">↗</span></a>
+      </nav>
+      <div class="header-badge"><span class="status-dot"></span> 무료 · 계정 불필요</div>
+    </header>
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-kicker"><span class="kicker-symbol">✦</span> PIXELLIFT · FREE AI UPSCALER <span class="line"></span> V1.0.4</div>
+        <h1 id="hero-title">작은 이미지를<br/><span>더 크고, 더 선명하게.</span></h1>
+        <p>사진·일러스트·애니메이션에 맞는 AI 모델로 디테일을 복원하세요.<br class="desktop-break"/> 브라우저에서 무료로, 최대 4배까지 확대합니다.</p>
+        <div class="hero-tags" aria-label="서비스 특징">
+          <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg> 100% 무료</span>
+          <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg> 업로드 없는 로컬 처리</span>
+          <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13 2-3 8h8L9 22l2-10H4l9-10Z"/></svg> GPU 가속</span>
+        </div>
+      </section>
+      <section id="studio" class="studio" aria-labelledby="studio-heading">
+        <div class="section-label"><span class="section-count">01</span> 이미지 업스케일러 <span class="section-line"></span><span class="section-sub">브라우저에서 바로 처리</span></div>
+        <div class="workspace">
+          <div class="workspace-head">
+            <div><h2 id="studio-heading">이미지 업스케일러</h2><p>이미지를 크게 확인하고, 아래에서 유형과 배율을 설정하세요.</p></div>
+            <div class="privacy-label"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg> 로컬 처리</div>
+          </div>
+          <div class="workspace-body">
+            <div class="preview-side">
+              <div class="preview-top"><div class="preview-title"><span class="preview-indicator"></span> 이미지 미리보기 <span class="preview-top-hint">· 영역을 클릭하거나 파일을 놓아 주세요</span></div><div class="preview-size" id="preview-size">이미지 없음</div></div>
+              <input class="file-input" type="file" id="file-input" accept="image/png,image/jpeg,image/webp" aria-label="업스케일할 이미지 업로드" />
+              <div class="preview-stage dropzone" id="dropzone" tabindex="0" role="group" aria-label="이미지 선택 영역. 클릭하거나 Enter 키를 눌러 이미지 파일을 선택할 수 있습니다. 이미지를 드래그해 놓을 수도 있습니다.">
+                <div class="empty-preview" id="empty-preview">
+                  <div class="demo-compare" aria-hidden="true"><img src="./demo-comparison.jpg" alt=""/></div>
+                  <strong id="drop-main">이미지를 클릭하거나 끌어다 놓으세요</strong>
+                  <p id="drop-description">JPG, PNG, WebP · 파일 최대 20MB</p>
+                  <button class="choose-btn" id="choose-btn" type="button">내 이미지 선택하기 <span aria-hidden="true">↗</span></button>
+                  <p class="demo-note">※ 위 이미지는 선명도 차이를 설명하는 예시입니다. 업스케일 후 실제 AI 처리 결과를 확인할 수 있습니다.</p>
+                </div>
+                <div class="compare hidden" id="compare">
+                  <img id="before-img" alt="원본 이미지" draggable="false" />
+                  <div class="after-layer" id="after-layer"><img id="after-img" alt="업스케일 이미지" draggable="false" /></div>
+                  <div class="compare-divider" id="compare-divider"><span class="compare-knob"><svg viewBox="0 0 28 20" aria-hidden="true"><path d="m10 4-6 6 6 6M18 4l6 6-6 6"/></svg></span></div>
+                  <span class="image-label image-label-before">BEFORE</span><span class="image-label image-label-after" id="label-after">AFTER</span>
+                  <input id="compare-range" type="range" min="0" max="100" value="50" aria-label="원본과 결과 비교 슬라이더" disabled />
+                </div>
+                <button class="change-image-btn hidden" type="button" id="change-image-btn" aria-label="새 이미지 선택하기">↥ <span>이미지 변경</span></button>
+                <div class="drop-overlay hidden" id="drop-overlay" aria-hidden="true"><span>여기에 이미지를 놓으세요</span></div>
+              </div>
+              <div class="preview-footer"><span><span class="tiny-dot"></span><span id="preview-caption">이 영역을 클릭하면 이미지 선택창이 열립니다</span></span><span id="result-format">ORIGINAL / UPSCALED</span></div>
+              <div class="file-pill hidden" id="file-pill">
+                <div class="file-pill-icon">IMG</div><div class="file-pill-details"><strong id="file-name">image.png</strong><small id="file-meta">1024 × 768</small></div>
+                <button class="icon-button" id="remove-file" type="button" aria-label="이미지 제거">×</button>
+              </div>
+              <div class="progress-wrap hidden" id="progress-wrap" aria-live="polite"><div class="progress-copy"><strong id="progress-label">모델을 준비 중입니다</strong><span id="progress-percent">0%</span></div><div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div><p id="progress-detail">최초 실행 시 모델 파일을 내려받습니다.</p></div>
+              <div class="result-actions hidden" id="result-actions"><div><strong>업스케일 완료</strong><small id="result-meta">원본 대비 4배 해상도</small></div><button class="download-btn" type="button" id="download-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v13m0 0 5-5m-5 5-5-5M4 18v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg> PNG 다운로드</button></div>
+              <div class="alert hidden" id="alert" role="alert"></div>
+            </div>
+            <div class="setting-side">
+              <div class="settings-grid">
+                <div class="setting-block">
+                  <div class="field-title"><span class="field-step">01</span><span>이미지 유형</span><span class="field-hint">전문 모델 선택</span></div>
+                  <div class="mode-group" role="radiogroup" aria-label="이미지 유형">
+                    <label class="mode-option"><input type="radio" name="mode" value="photo" checked /><span class="mode-glyph">◉</span><span class="mode-copy"><strong>사진</strong><small>PHOTO</small></span><span class="mode-check">✓</span></label>
+                    <label class="mode-option"><input type="radio" name="mode" value="illustration" /><span class="mode-glyph">◈</span><span class="mode-copy"><strong>일러스트</strong><small>ILLUSTRATION</small></span><span class="mode-check">✓</span></label>
+                    <label class="mode-option"><input type="radio" name="mode" value="anime" /><span class="mode-glyph">▣</span><span class="mode-copy"><strong>애니메이션</strong><small>ANIME</small></span><span class="mode-check">✓</span></label>
+                  </div>
+                </div>
+                <div class="setting-block">
+                  <div class="field-title"><span class="field-step">02</span><span>확대 배율</span><span class="field-hint">출력 크기</span></div>
+                  <div class="scale-selector" role="radiogroup" aria-label="확대 배율">
+                    <label class="scale-option"><input type="radio" name="scale" value="2"/><span>2<span class="scale-x">×</span></span><small>2배 확대</small></label>
+                    <label class="scale-option"><input type="radio" name="scale" value="4" checked/><span>4<span class="scale-x">×</span></span><small>4배 확대</small><em>인기</em></label>
+                  </div>
+                </div>
+              </div>
+              <div class="settings-action-row">
+                <div class="settings-summary"><div class="output-summary" id="output-summary" aria-live="polite"><span>예상 출력 해상도</span><strong id="dimensions-value">이미지를 먼저 선택하세요</strong></div><p class="gpu-notice" id="gpu-notice" role="status">브라우저 GPU 환경을 확인하고 있습니다.</p></div>
+                <div class="settings-actions"><button class="primary-action" id="start-btn" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13 2-3 8h8L9 22l2-10H4l9-10Z"/></svg> <span>AI 업스케일 시작</span><span class="action-arrow">↗</span></button><button class="cancel-action hidden" id="cancel-btn" type="button">작업 취소</button></div>
+              </div>
+            </div>
+          </div>
+          <div class="workspace-bottom"><span>이미지는 서버에 전송되지 않고 사용자의 브라우저에서 처리됩니다.</span></div>
+        </div>
+      </section>
+      <section id="how-it-works" class="how" aria-labelledby="how-title"><div class="section-label"><span class="section-count">02</span> 이용 방법 <span class="section-line"></span><span class="section-sub">3단계로 완료</span></div><h2 id="how-title">간단하게 업로드하고,<br/><span>차이를 직접 확인하세요.</span></h2><div class="steps"><article><span class="step-num">01 / UPLOAD</span><div class="step-graphic">↥</div><h3>이미지 선택</h3><p>사진, 일러스트 또는 애니메이션 이미지를 업로드하세요.</p></article><article><span class="step-num">02 / ENHANCE</span><div class="step-graphic">✳</div><h3>AI 디테일 복원</h3><p>선택한 이미지에 맞는 초해상도 모델이 로컬에서 실행됩니다.</p></article><article><span class="step-num">03 / EXPORT</span><div class="step-graphic">↗</div><h3>비교하고 저장</h3><p>원본과 결과를 슬라이더로 비교한 뒤 PNG로 다운로드하세요.</p></article></div></section>
+      <div class="disclaimer"><div class="info-circle">i</div><div><strong>고품질 처리 안내</strong><p>AI 모델은 첫 실행 시 다운로드되며, 처리 속도는 브라우저·GPU·이미지 크기에 따라 달라집니다. 실제 존재하지 않았던 세부 질감이 생성될 수 있으므로 중요한 기록이나 증거 사진에는 주의해 주세요.</p></div></div>
+    </main>
+    <footer><a class="footer-logo" href="./">pixel<span>lift</span>.</a><p>More detail. Less compromise.</p><div><span>© 2026 PixelLift</span></div></footer>
+  </div>
+</body>
+</html>
